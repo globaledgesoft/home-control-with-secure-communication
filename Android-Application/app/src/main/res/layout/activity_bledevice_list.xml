@@ -1,0 +1,83 @@
+<android.support.constraint.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:id="@+id/layoutConstraint"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <android.support.v7.widget.Toolbar
+        android:id="@+id/toolBar"
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:background="@color/gunmetalGray"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+
+        <com.app.qdn_homecontrol_app.Util.QDNTextView
+            style="@style/toolbarTextView"
+            android:text="@string/qdn_home_control"
+            android:textColor="@color/white" />
+
+
+        <ImageView
+            android:layout_margin="@dimen/dim_15dp"
+            android:id="@+id/aboutImageViewClick"
+            android:layout_width="@dimen/dim_40dp"
+            android:layout_height="@dimen/dim_40dp"
+            android:layout_gravity="end"
+            android:layout_marginRight="@dimen/dim_5dp"
+            android:padding="@dimen/dim_5dp"
+            android:src="@drawable/settings1" />
+
+        <ImageView
+            android:id="@+id/scanBLEImageView"
+            android:layout_width="@dimen/dim_50dp"
+            android:layout_height="@dimen/dim_50dp"
+            android:layout_gravity="end"
+            android:padding="@dimen/dim_10dp"
+            android:src="@drawable/scan1" />
+
+
+    </android.support.v7.widget.Toolbar>
+
+    <com.app.qdn_homecontrol_app.Util.QDNTextView
+        android:id="@+id/deviceListTextView"
+        style="@style/listTitleTextView"
+        android:layout_marginTop="@dimen/dim_10dp"
+        android:layout_marginLeft="@dimen/dim_10dp"
+        android:text="@string/device_list"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/toolBar" />
+
+    <android.support.v7.widget.RecyclerView
+        android:id="@+id/recycler_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/dim_10dp"
+        android:scrollbars="vertical"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/deviceListTextView"
+        />
+
+    <com.app.qdn_homecontrol_app.Util.QDNTextView
+        android:id="@+id/licenceText"
+        style="@style/listTitleTextView"
+        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_marginTop="@dimen/dim_10dp"
+        android:layout_marginBottom="@dimen/dim_10dp"
+        android:maxLines="3"
+        android:text="@string/licence"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@+id/recycler_view"
+        app:layout_constraintVertical_bias="0.931" />
+
+</android.support.constraint.ConstraintLayout>

@@ -1,0 +1,41 @@
+<android.support.constraint.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <android.support.v7.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/cardView"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        android:layout_margin="@dimen/dim_10dp"
+        app:cardCornerRadius="@dimen/dim_5dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/dim_10dp">
+
+            <com.app.qdn_homecontrol_app.Util.QDNTextView
+                style="@style/listItemTitleTextView"
+                android:id="@+id/textViewDeviceName"/>
+
+            <com.app.qdn_homecontrol_app.Util.QDNTextView
+                style="@style/listItemTextView"
+                android:id="@+id/textViewMacAddress"/>
+
+        </LinearLayout>
+    </android.support.v7.widget.CardView>
+
+    <View
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/cardView"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/dim_10dp"/>
+
+
+</android.support.constraint.ConstraintLayout>

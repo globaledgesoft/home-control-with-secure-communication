@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/uiUltraLightGray">
+
+    <android.support.design.widget.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/dim_toolbar_size"
+        android:id="@+id/toolBarCustom"
+        android:theme="@style/AppTheme.AppBarOverlay">
+
+        <android.support.v7.widget.Toolbar
+            android:id="@+id/toolbarLayout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/gunmetalGray">
+
+            <ImageView
+                android:src="@drawable/back1"
+                android:layout_gravity="start"
+                android:padding="@dimen/dim_10dp"
+                android:layout_width="@dimen/dim_40dp"
+                android:layout_height="@dimen/dim_40dp"
+                android:id="@+id/deviceDetailsBackButton"
+                />
+
+            <com.app.qdn_homecontrol_app.Util.QDNTextView
+                android:padding="@dimen/dim_5dp"
+                android:textColor="@color/white"
+                style="@style/toolbarTextView"
+                android:id="@+id/deviceDetailsToolbarTextView"
+                tools:ignore="RtlHardcoded,RtlSymmetry" />
+
+        </android.support.v7.widget.Toolbar>
+
+    </android.support.design.widget.AppBarLayout>
+
+
+    <LinearLayout
+        android:layout_below="@id/toolBarCustom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="@dimen/dim_10dp"
+        android:orientation="vertical">
+
+        <com.app.qdn_homecontrol_app.Util.QDNTextView
+            style="@style/listTitleTextView"
+            android:text="@string/smart_devices_connected"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:weightSum="1">
+
+            <android.support.v7.widget.CardView
+                android:layout_weight="0.5"
+                android:layout_width="@dimen/dim_0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="@dimen/dim_5dp">
+
+                <LinearLayout
+                    android:id="@+id/bulbLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    >
+
+                    <com.app.qdn_homecontrol_app.Util.QDNTextView
+                        android:text="@string/bulb"
+                        style="@style/listItemTitleTextView"
+                        android:padding="@dimen/dim_10dp"/>
+
+                    <ImageView
+                        android:id="@+id/bulbImg"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:src="@drawable/bulb_off_img"
+                        android:layout_gravity="center"
+                        />
+
+                    <com.app.qdn_homecontrol_app.Util.QDNTextView
+                        android:id="@+id/bulbStatusTxt"
+                        style="@style/listItemTextView"
+                        android:layout_gravity="center"
+                        android:text="@string/off"
+                        android:padding="@dimen/dim_10dp"
+                        />
+                </LinearLayout>
+
+
+            </android.support.v7.widget.CardView>
+
+            <android.support.v7.widget.CardView
+                android:layout_weight="0.5"
+                android:layout_width="@dimen/dim_0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="@dimen/dim_5dp">
+
+                <LinearLayout
+                    android:id="@+id/lockLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    >
+
+                    <com.app.qdn_homecontrol_app.Util.QDNTextView
+                        android:text="@string/lock"
+                        style="@style/listItemTitleTextView"
+                        android:padding="@dimen/dim_10dp"/>
+
+                    <ImageView
+                        android:id="@+id/lockImg"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:src="@drawable/unlocked_img"
+                        android:layout_gravity="center"
+                        />
+
+                    <com.app.qdn_homecontrol_app.Util.QDNTextView
+                        android:id="@+id/lockStatusTxt"
+                        android:layout_gravity="center"
+                        android:text="@string/locked"
+                        android:padding="@dimen/dim_10dp"
+                        style="@style/listItemTextView"
+
+                        />
+                </LinearLayout>
+
+
+            </android.support.v7.widget.CardView>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="@dimen/dim_5dp"
+            >
+
+            <android.support.v7.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <com.app.qdn_homecontrol_app.Util.QDNTextView
+                        style="@style/listItemTitleTextView"
+                        android:text="@string/smoke_detector"
+                        android:paddingStart="@dimen/dim_10dp"
+                        tools:ignore="RtlSymmetry" />
+
+                    <com.jjoe64.graphview.GraphView
+                        android:id="@+id/graph"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="@dimen/dim_10dp"
+                        />
+
+                </LinearLayout>
+
+
+            </android.support.v7.widget.CardView>
+
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</RelativeLayout>

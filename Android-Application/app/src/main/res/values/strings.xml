@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">QDN-HomeControl-App</string>
+    <string name="device_name">QCA402X</string>
+    <string name="device_details">Device Details</string>
+    <string name="mac_address">MAC Address :</string>
+    <string name="status">Status :</string>
+    <string name="connected">Connected</string>
+    <string name="smart_devices_connected">Smart Devices Connected</string>
+    <string name="bulb">Bulb</string>
+    <string name="lock">Lock</string>
+    <string name="smoke_detector">Smoke Detector</string>
+    <string name="device_list">Device List</string>
+    <string name="licence">"Qualcomm QCA402x is a product of\n Qualcomm Technologies,Inc.\n and/or its subsidiaries"</string>
+    <string name="scanning">Scanning</string>
+    <string name="qdn_home_control">Home Control</string>
+    <string name="splash_screen_image">SplashScreenImage</string>
+    <string name="settings">Settings</string>
+
+    <string name="locked">Locked</string>
+    <string name="splashscreenimageview">splashScreenImageView</string>
+    <string name="off">Off</string>
+    <string name="on">On</string>
+    <string name="bulb_not_enable">Not Connected</string>
+    <string name="unlocked">Unlocked</string>
+    <string name="about">About</string>
+    <string name="unknown">Unknown</string>
+
+    unlock and lock
+    <string name="unlocking">Unlocking </string>
+    <string name="locking">Locking </string>
+    <string name="turning_on">Turning On </string>
+    <string name="turning_off">Turning Off </string>
+
+
+    <string name="gpsNetworkNotEnabled">Gps Network not Enabled</string>
+    <string name="openLocationSettings">Open Location Settings</string>
+    <string name="buttonCancel">Cancel</string>
+
+
+    <!--Dialog Message-->
+    <string name="fetch_data">Fetching data from Board! </string>
+    <string name="send_data">Sending data to Board! </string>
+
+    <string name="toast_permission_is_required">permission is required</string>
+</resources>
