@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">BleLibrary</string>
+    <string name="scan_period_long">scan period is too long</string>
+    <string name="service_disconnected">service disconnected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="toast_service_not_discovered">service not discovered</string>
+    <string name="toast_write_failed">Write Failed</string>
+    <string name="toast_read_failed">Could not get data from board!</string>
+    <string name="toast_not_connected">not connected</string>
+</resources>
