@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="actionbar_height">80dp</dimen>
+    <dimen name="text_title_size">20sp</dimen>
+    <dimen name="list_title_size">14sp</dimen>
+    <dimen name="list_item_title_size">16sp</dimen>
+    <dimen name="list_item_size">14sp</dimen>
+    <dimen name="dim_toolbar_size">70dp</dimen>
+    <dimen name="dim_10dp">10dp</dimen>
+    <dimen name="dim_0dp">0dp</dimen>
+    <dimen name="dim_5dp">5dp</dimen>
+    <dimen name="dim_15dp">15dp</dimen>
+    <dimen name="dim_40dp">40dp</dimen>
+    <dimen name="dim_50dp">50dp</dimen>
+
+</resources>
