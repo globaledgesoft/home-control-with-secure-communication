@@ -35,26 +35,31 @@
 #include "adc_demo.h"
 #include "pwm_demo.h"
 #include "home_automation.h"
-// HOME AUTOMATION QC-QDN
-typedef char BoardStr_t[16]; 
+// HOME AUTOMATION
 
+typedef char BoardStr_t[16]; 
 uint32_t service_id;
 uint32_t connection_id;
-
-static void BD_ADDRToStr(qapi_BLE_BD_ADDR_t Board_Address, BoardStr_t BoardStr);
-static void lock();
-static void unlock();
-static uint32_t get_smokedetector_value();
-
-uint16_t    BulbState = BULB_STATE_DISCONNECTED;
+uint16_t SmokeDetectorValue = 0;
+uint8_t BulbState = BULB_STATE_DISCONNECTED;
 volatile uint32_t    notify_thread_flag = 0;
 uint32_t ble_stack_id = 0;
+
+qapi_BLE_GATT_Server_Event_Data_t *gatt_sever;
+
+static void BD_ADDRToStr(qapi_BLE_BD_ADDR_t Board_Address, BoardStr_t BoardStr);
+
+static void lock();
+
+static void unlock();
+
+static uint16_t get_smokedetector_value();
+
 extern QCLI_Group_Handle_t ble_group;               /* Handle for our main QCLI Command*/
+
 extern uint32_t BT_Stk_Id();
 
 static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, qapi_BLE_GATT_Server_Event_Data_t *GATT_ServerEventData, uint32_t CallbackParameter);
-
-qapi_BLE_GATT_Server_Event_Data_t *gatt_sever;
 
 
 static void BD_ADDRToStr(qapi_BLE_BD_ADDR_t Board_Address, BoardStr_t BoardStr) 
@@ -154,7 +159,7 @@ const qapi_BLE_GATT_Service_Attribute_Entry_t BLE_IO_Service[] =
 
 // Smoke detector module
 
-static uint32_t get_smokedetector_value()
+static uint16_t get_smokedetector_value()
 {
     return home_automation_adc(0, 0);
 }
@@ -233,12 +238,12 @@ int BLE_IOService()
 
 }
 
-uint32_t SmokeDetectorValue = 0;
+
 
 void notify_smoke_data(){
-    uint32_t Smoke_Result = 0;
+    uint16_t Smoke_Result = 0;
     if (notify_thread_flag) {
-        ASSIGN_HOST_DWORD_TO_LITTLE_ENDIAN_UNALIGNED_DWORD(&Smoke_Result, SmokeDetectorValue);
+        ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&Smoke_Result, SmokeDetectorValue);
         qapi_BLE_GATT_Handle_Value_Notification(ble_stack_id, service_id, connection_id, BLE_SMO_DET_ATTRIBUTE_OFFSET, sizeof(Smoke_Result), (uint8_t *)&Smoke_Result);
         QCLI_Printf(ble_group, "Smoke data sent: %d\r\n",SmokeDetectorValue);
     } else {
@@ -247,9 +252,9 @@ void notify_smoke_data(){
 }
 
 void notify_bulb_state(){
-    uint32_t LittleEndianValueBulb = 0;
+    uint8_t LittleEndianValueBulb = 0;
     if (notify_thread_flag) {
-        ASSIGN_HOST_DWORD_TO_LITTLE_ENDIAN_UNALIGNED_DWORD(&LittleEndianValueBulb, BulbState);
+        ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueBulb, BulbState);
         qapi_BLE_GATT_Handle_Value_Notification(ble_stack_id, service_id, connection_id, BLE_BULB_ATTRIBUTE_OFFSET, sizeof(LittleEndianValueBulb), (uint8_t *)&LittleEndianValueBulb);
         QCLI_Printf(ble_group, "bulb Data Notification Sent\r\n");
     }else {
@@ -260,11 +265,8 @@ void notify_bulb_state(){
 
 void notify_thread() 
 {    
-      while(1) { 
                SmokeDetectorValue = get_smokedetector_value();
                Sleep(1000);
-      }
-
 }
 
 void smoke_sensor_init()
@@ -276,7 +278,8 @@ void smoke_sensor_init()
       /* Start the main demo thread. */
       qurt_thread_attr_init(&Thread_Attribte);
       qurt_thread_attr_set_name(&Thread_Attribte, "BLE-Notify Thread");
-      qurt_thread_attr_set_priority(&Thread_Attribte, PAL_THREAD_PRIORITY);      qurt_thread_attr_set_stack_size(&Thread_Attribte, PAL_THREAD_STACK_SIZE);
+      qurt_thread_attr_set_priority(&Thread_Attribte, PAL_THREAD_PRIORITY);      
+      qurt_thread_attr_set_stack_size(&Thread_Attribte, PAL_THREAD_STACK_SIZE);
       Result = qurt_thread_create(&Thread_Handle, &Thread_Attribte, notify_thread, NULL);
       if(Result != QURT_EOK)
       {
@@ -287,14 +290,14 @@ void smoke_sensor_init()
 
 static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, qapi_BLE_GATT_Server_Event_Data_t *GATT_ServerEventData, uint32_t CallbackParameter)
 {
-    static uint16_t                      LockState;  // to store the state of lock
-    uint16_t                             LittleEndianValueLock = 0;  // convertion LittleEndian format
+    static uint8_t                      LockState;  // to store the state of lock
+    uint8_t                             LittleEndianValueLock = 0;  // convertion LittleEndian format
     uint16_t                             AttributeOffset;
-    uint16_t                             LittleEndianValueBulb = 0;  // convertion LittleEndian format
+    uint8_t                             LittleEndianValueBulb = 0;  // convertion LittleEndian format
     uint32_t                             Value;
     static uint32_t                      blb_notification_flag = 0;
     BoardStr_t                           RemoteDeviceAddress;
-
+    
    /* Verify that all parameters to this callback are Semi-Valid.       */
    if((BluetoothStackID) && (GATT_ServerEventData))
    {
@@ -311,34 +314,41 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                 break;
 
          case QAPI_BLE_ET_GATT_SERVER_READ_REQUEST_E:
-            /* Verify that the Event Data is valid.                  */
-            if(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data)
-            {
-                     QCLI_Printf(ble_group, "Encryption is enabled\n");
+                /* Verify that the Event Data is valid.                  */
+                if(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data)
+                {
                     if(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeValueOffset == 0)
                     {
-                            /* Determine which request this read is coming for.*/
-                  switch(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset)
-                  {                     
-                     case BLE_LOCK_ATTRIBUTE_OFFSET:
-                        ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&LittleEndianValueLock, LockState);
-                        qapi_BLE_GATT_Read_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, sizeof(LittleEndianValueLock), (uint8_t *)&LittleEndianValueLock);
-                        QCLI_Printf(ble_group, "Reading Lock Status.");
-                        break;
-                     case BLE_BULB_ATTRIBUTE_OFFSET:
-                        ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&LittleEndianValueBulb, BulbState);
-                        qapi_BLE_GATT_Read_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, sizeof(LittleEndianValueBulb), (uint8_t *)&LittleEndianValueBulb);
-                        QCLI_Printf(ble_group, "Reading the bulb status.");
-                        break;
-                     default:
-                        qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_READ_NOT_PERMITTED);
-                  }
-               }
-               else
-                  qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_ATTRIBUTE_NOT_LONG);
+                        /* Determine which request this read is coming for.*/
+                        switch(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset)
+                        {                     
+                            case BLE_LOCK_ATTRIBUTE_OFFSET:
+                                if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->RemoteDevice) == -1) { 
+                                    qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                                    break;
+                                }
+                                ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueLock, LockState);
+                                qapi_BLE_GATT_Read_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, sizeof(LittleEndianValueLock), (uint8_t *)&LittleEndianValueLock);
+                                QCLI_Printf(ble_group, "Reading Lock Status.");
+                                break;
+                            case BLE_BULB_ATTRIBUTE_OFFSET:
+                                if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->RemoteDevice) == -1) { 
+                                    qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                                    break;
+                                }
+                                ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueBulb, BulbState);
+                                qapi_BLE_GATT_Read_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, sizeof(LittleEndianValueBulb), (uint8_t *)&LittleEndianValueBulb);
+                                QCLI_Printf(ble_group, "Reading the bulb status.");
+                                break;
+                            default:
+                                qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_READ_NOT_PERMITTED);
+                        }
+                    }
+                    else
+                        qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->AttributeOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_ATTRIBUTE_NOT_LONG);
 
-        }
-            break;
+                }
+                break;
          case QAPI_BLE_ET_GATT_SERVER_WRITE_REQUEST_E:
             /* Verify that the Event Data is valid.                  */
             if(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data)
@@ -352,7 +362,11 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                   /* Handle a control point write.  */
                   switch(AttributeOffset)
                   {
-                     case BLE_LOCK_ATTRIBUTE_OFFSET:
+                      case BLE_LOCK_ATTRIBUTE_OFFSET:
+                          if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->RemoteDevice) == -1) {
+                              qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValueOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                              break;                                      
+                          } 
                         LockState = READ_UNALIGNED_BYTE_LITTLE_ENDIAN(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValue);
                         if (LockState != 0) {
                             lock();
@@ -389,7 +403,7 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         }
                         //Notify about bulb
                         if(blb_notification_flag) {
-                              ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&LittleEndianValueBulb, BulbState);
+                              ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueBulb, BulbState);
                               qapi_BLE_GATT_Handle_Value_Notification(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ServiceID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ConnectionID, BLE_BULB_ATTRIBUTE_OFFSET, sizeof(LittleEndianValueBulb), (uint8_t *)&LittleEndianValueBulb);
                         } else {
                               QCLI_Printf(ble_group, "Bulb Notification is disabled.\n");
@@ -397,6 +411,14 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         qapi_BLE_GATT_Write_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID);
                         break;
                      case BLE_SMO_DET_CCD_ATTRIBUTE_OFFSET:
+
+                          QCLI_Printf(ble_group, "In BLE_SMO_DET_CCD_ATTRIBUTE_OFFSET\n");
+                          if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->RemoteDevice) == -1) {
+                              qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValueOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                              
+                            QCLI_Printf(ble_group, "In If condition , encryption is not enabled\n");
+                              break;                                      
+                          } 
                         /* Handle a CCD write. */
                         Value = READ_UNALIGNED_WORD_LITTLE_ENDIAN(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValue);
                         if(Value != QAPI_BLE_GATT_CLIENT_CONFIGURATION_CHARACTERISTIC_NOTIFY_ENABLE) {
@@ -405,16 +427,21 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         }
                         else {
                               QCLI_Printf(ble_group, "Smoke Detector - Enabled the notify.");
-                              notify_thread_flag = 1;
+                              ble_stack_id = BluetoothStackID;
                               service_id = GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ServiceID;
                               connection_id = GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ConnectionID;
-                              ble_stack_id = BluetoothStackID;
+                              notify_thread_flag = 1;
                               //run_thread();
                         }                
                         QCLI_Printf(ble_group, "Reading Smoke Detector Value.");
+                        QCLI_Printf(ble_group, "sending the write response for the smoke detector notification write req\n");
                         qapi_BLE_GATT_Write_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID);
                         break;
                      case BLE_BULB_ATTRIBUTE_OFFSET:
+                          if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->RemoteDevice) == -1) {
+                              qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValueOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                              break;                                      
+                          } 
                         if(BulbState != BULB_STATE_DISCONNECTED) {
                               BulbState = READ_UNALIGNED_BYTE_LITTLE_ENDIAN(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValue);
                               if (BulbState != BULB_STATE_OFF) {
@@ -432,7 +459,7 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         }
                         //Notify about bulb
                         if(blb_notification_flag) {
-                              ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&LittleEndianValueBulb, BulbState);
+                              ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueBulb, BulbState);
                               qapi_BLE_GATT_Handle_Value_Notification(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ServiceID, GATT_ServerEventData->Event_Data.GATT_Read_Request_Data->ConnectionID, BLE_BULB_ATTRIBUTE_OFFSET, sizeof(LittleEndianValueBulb), (uint8_t *)&LittleEndianValueBulb);
                         } else {
                               QCLI_Printf(ble_group, "Bulb Notification is Disabled.\n");
@@ -440,6 +467,14 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         qapi_BLE_GATT_Write_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID);
                         break;
                      case BLE_BULB_CCD_ATTRIBUTE_OFFSET:
+                          QCLI_Printf(ble_group, "In BLE_BULB_CCD_ATTRIBUTE_OFFSET\n");
+
+                          if (CheckEncryptionStatus(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->RemoteDevice) == -1) {
+                              qapi_BLE_GATT_Error_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValueOffset, QAPI_BLE_ATT_PROTOCOL_ERROR_CODE_INSUFFICIENT_ENCRYPTION);
+                            QCLI_Printf(ble_group, "In If condition , encryption is not enabled\n");
+                              
+                              break;                                      
+                          } 
                         Value = READ_UNALIGNED_WORD_LITTLE_ENDIAN(GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->AttributeValue);
                         if(Value != QAPI_BLE_GATT_CLIENT_CONFIGURATION_CHARACTERISTIC_NOTIFY_ENABLE) {
                               QCLI_Printf(ble_group, "Bulb Notification Disabled.\n");
@@ -447,8 +482,10 @@ static void GATT_ServerEventCallback_Home_Automation(uint32_t BluetoothStackID, 
                         } else {
                               blb_notification_flag = 1;
                               QCLI_Printf(ble_group, "Bulb Notification Enabled. State: %d\n", BulbState);
-                              ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(&LittleEndianValueBulb, BulbState);
+                              ASSIGN_HOST_BYTE_TO_LITTLE_ENDIAN_UNALIGNED_BYTE(&LittleEndianValueBulb, BulbState);
                         }
+
+                        QCLI_Printf(ble_group, "sending the write response for the bulb notification write req\n");
                         qapi_BLE_GATT_Write_Response(BluetoothStackID, GATT_ServerEventData->Event_Data.GATT_Write_Request_Data->TransactionID);
                         break;
                      default:

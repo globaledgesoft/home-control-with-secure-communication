@@ -6,8 +6,6 @@
 
 #include "qapi.h"
 
-
-
 #define PAL_THREAD_STACK_SIZE                           (3072)
 #define PAL_THREAD_PRIORITY                             (10)
 
@@ -60,16 +58,41 @@
                           } while (0)
 
 
+/**
+ * @func : BLE_IOService
+ * @Desc : The following function registers the home automation service and its respective characteristics and descriptors */
+
+
 int BLE_IOService();
+
+/**
+ * @func : notify_smoke_data
+ * @Desc : The following function notifies the smoke data at a specific intervals of time */
+
+
 void notify_smoke_data();
+
+/**
+ * @func : notify_bulb_state 
+ * @Desc : The following function notifies the bulb state at a specific intervals of time */
+
+
 void notify_bulb_state();
+
+/**
+ * @func : smoke_sensor_init
+ * @Desc : The following function initializes the smoke senor module */
+
+
+
 void smoke_sensor_init();
+
+
 enum BULB_STATES {
     
     BULB_STATE_OFF,
     BULB_STATE_ON,
-    BULB_STATE_DISCONNECTED
-
+    BULB_STATE_DISCONNECTED,
 };
 
 #endif// __BLE_SERVER__
