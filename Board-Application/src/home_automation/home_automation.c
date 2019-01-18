@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
 #include "qurt_signal.h"
 #include "qapi/qurt_thread.h"
 #include "stdint.h"
@@ -34,16 +33,19 @@
 #include "qapi_timer.h"
 #include "qapi/qapi_status.h"
 #include <qapi_i2c_master.h>
-
 #include "qapi_otp_tlv.h"
 #include "qapi_timer.h"
 #include "qurt_timer.h"    /* Timer for Throughput Calculation.         */
 #include "home_automation.h"
 #include "qcli_util.h"
-
 #include "ble_server.h" /* OTA service API.                        */
-
 #include "qapi_fs.h"
+
+
+/*NEW: */
+extern uint16_t SmokeDetectorValue;
+
+
 
 QCLI_Group_Handle_t ble_group;
 
@@ -52,579 +54,33 @@ QCLI_Group_Handle_t ble_group;
 #define LOG_INFO(...)                     QCLI_Printf(ble_group, __VA_ARGS__)
 #define LOG_VERBOSE(...)                  QCLI_Printf(ble_group, __VA_ARGS__)
 
-#define BLB_NUM_BULBS 1
-
-//Home Automation - Start
-extern uint32_t BulbState;
-
-#define BLBD_THREAD_STACK_SIZE      (2048)
-#define BLBD_THREAD_PRIORITY        (12)
-#define BLBD_THREAD_STOP            (1<<5)
-
-#define BLBD_SCAN_RESULT_SIGNAL_INTR        (1)
-#define BLBD_CONNECTION_SUCCESS_SIGNAL_INTR     (2)
-#define BLBD_SERVICE_DISCOVERY_SIGNAL_INTR (3)
-#define BLBD_PERIODIC_TIMER_SIGNAL_INTR (4)
-#define BLBD_SCAN_STOPPED_SIGNAL_INTR (5)
-
-#define BLBD_SCAN_RESULT        (6)
-#define BLBD_CONNECTION_RESULT      (7)
-#define BLBD_SERVICE_DISCOVERY_RESULT (8)
-#define BLBD_DISCONNECTION_RESULT (9)
-#define BLBD_CONNECTION_FAILED_SIGNAL_INTR (10)
-#define BLBD_CONNECTION_TICKS 6
-
-#define BLBD_DEVICE_SIGNATURE "HOME-BLB"
-#define BLB_MAX_CHARS 3
-#define AD_TYPE_LOCAL_NAME 0x09
-#define BLBD_SERVICE_UUID { 0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x01, 0xFF, 0x00, 0x00 }
-
-#define QAPI_BLE_BLBD_COMPARE_SERVICE_UUID_TO_UUID_16(_x)  QAPI_BLE_COMPARE_BLUETOOTH_UUID_16_TO_CONSTANT((_x), 0xFF, 0x01)
-#define QAPI_BLE_BLBD_COMPARE_CHAR_UUID_TO_UUID_128(_x)  QAPI_BLE_COMPARE_BLUETOOTH_UUID_128_TO_CONSTANT((_x), 0x00, 0x00, 0xFF, 0xFB, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB)
-#define QAPI_BLE_BLBD_COMPARE_SERVICE_UUID_TO_UUID_128(_x)  QAPI_BLE_COMPARE_BLUETOOTH_UUID_128_TO_CONSTANT((_x), 0x00, 0x00, 0xFF, 0x10, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB)
-#define QAPI_BLE_BLBD_COMPARE_CHAR_UUID_TO_UUID_16(_x)  QAPI_BLE_COMPARE_BLUETOOTH_UUID_16_TO_CONSTANT((_x), 0xFF, 0xFC)
-
- enum
-{
-    AET_DISABLE_E,
-    AET_ENABLE_ALL_E,
-    AET_ENABLE_CHANNEL_37_E,
-    AET_ENABLE_CHANNEL_38_E,
-    AET_ENABLE_CHANNEL_39_E
-};
-
-
-  /* Demo Constants.                                                   */
-#define HOME_AUTOMATION 1
-
-#ifndef V2
-   #define QAPI_BLE_LAT_ANONYMOUS_E                   255
-#endif
-
-   /* Some MACROs for accessing little-endian unaligned values.         */
-#define READ_UNALIGNED_BYTE_LITTLE_ENDIAN(_x)  (((uint8_t *)(_x))[0])
-#define READ_UNALIGNED_WORD_LITTLE_ENDIAN(_x)  ((uint16_t)((((uint16_t)(((uint8_t *)(_x))[1])) << 8) | ((uint16_t)(((uint8_t *)(_x))[0]))))
-
-#define ASSIGN_HOST_WORD_TO_LITTLE_ENDIAN_UNALIGNED_WORD(_x, _y)        \
-{                                                                       \
-  ((uint8_t *)(_x))[0] = ((uint8_t)(((uint16_t)(_y)) & 0xFF));          \
-  ((uint8_t *)(_x))[1] = ((uint8_t)((((uint16_t)(_y)) >> 8) & 0xFF));   \
-}
-
-#define CONVERT_TO_BASEBAND_SLOTS(_x)                             ((unsigned long)((((8000L * ((unsigned long)(_x))) / 500L) + 5L)/10L))
-
-   /* Determine the Name we will use for this compilation.              */
-#define DEVICE_FRIENDLY_NAME                       "Q4020_GES"
-
-   /* The following MACRO is used to convert an ASCII character into the*/
-   /* equivalent decimal value.  The MACRO converts lower case          */
-   /* characters to upper case before the conversion.                   */
-#define ToInt(_x)                                  (((_x) > 0x39)?(((_x) & ~0x20)-0x37):((_x)-0x30))
-
-   /* Generic Access Profile (GAP) Constants.                           */
-
-#define DEFAULT_IO_CAPABILITY      (QAPI_BLE_LIC_NO_INPUT_NO_OUTPUT_E)
-                                                         /* Denotes the       */
-                                                         /* default I/O       */
-                                                         /* Capability that is*/
-                                                         /* used with Pairing.*/
-
-#define DEFAULT_MITM_PROTECTION                  (TRUE)  /* Denotes the       */
-                                                         /* default value used*/
-                                                         /* for Man in the    */
-                                                         /* Middle (MITM)     */
-                                                         /* protection used   */
-                                                         /* with Secure Simple*/
-                                                         /* Pairing.          */
-
-#define DEFAULT_SECURE_CONNECTIONS               (TRUE)  /* Denotes the       */
-                                                         /* default value used*/
-                                                         /* for Secure        */
-                                                         /* Connections used  */
-                                                         /* with Secure Simple*/
-                                                         /* Pairing.          */
-
-   /* Automation IO Service (AIOS) Constants.                           */
-
-#define AIOP_NUMBER_OF_SUPPORTED_CHARACTERISTICS   (2)   /* Denotes the number*/
-                                                         /* of                */
-                                                         /* characteristics   */
-                                                         /* supported by the  */
-                                                         /* AIOS Server.      */
-
-#define AIOP_NUMBER_OF_SUPPORTED_INSTANCES         (2)   /* Denotes the number*/
-                                                         /* of                */
-                                                         /* instances for each*/
-                                                         /* Characteristic    */
-                                                         /* supported by the  */
-                                                         /* AIOS Server.      */
-
-#define AIOP_DEFAULT_INPUT_CHARACTERISTIC_PROPERTY_FLAGS  (QAPI_BLE_AIOS_INPUT_CHARACTERISTIC_PROPERTY_FLAGS_NOTIFY)
-                                                         /* Denotes the default*/
-                                                         /* input              */
-                                                         /* Characteristic     */
-                                                         /* Property Flags.    */
-
-#define AIOP_DEFAULT_OUTPUT_CHARACTERISTIC_PROPERTY_FLAGS (QAPI_BLE_AIOS_OUTPUT_CHARACTERISTIC_PROPERTY_FLAGS_WRITE | \
-                                                           QAPI_BLE_AIOS_OUTPUT_CHARACTERISTIC_PROPERTY_FLAGS_READ  | \
-                                                           QAPI_BLE_AIOS_OUTPUT_CHARACTERISTIC_PROPERTY_FLAGS_NOTIFY)
-                                                         /* Denotes the default*/
-                                                         /* output             */
-                                                         /* Characteristic     */
-                                                         /* Property Flags.    */
-
-   /* Battery Alert Service (BAS) Constants.                            */
-
-#define MAX_SUPPORTED_BATTERY_INSTANCES            (1)   /* Denotes the       */
-                                                         /* maximum number of */
-                                                         /* Battery Service   */
-                                                         /* Instances that are*/
-                                                         /* supported by this */
-                                                         /* application.      */
-
-
-   /* HID over GATT Service (HOGP) Constants.                           */
-
-
-#define MAX_NUM_DEVICES                (1)   /* Denotes the       */
-                                                         /* maximum number of */
-                                                         /* Instances that are*/
-                                                         /* supported by this */
-                                                         /* application.      */
-
-   /* Serial Port Profile over LE (SPPLE) Constants.                    */
-
-#ifndef SPPLE_DATA_BUFFER_LENGTH
-#define SPPLE_DATA_BUFFER_LENGTH    (517)
-                                                         /* Defines the length*/
-                                                         /* of a SPPLE Data   */
-                                                         /* Buffer.           */
-#endif
-
-#define SPPLE_DATA_CREDITS        (SPPLE_DATA_BUFFER_LENGTH*3)
-                                                         /* Defines the       */
-                                                         /* number of credits */
-                                                         /* in an SPPLE Buffer*/
-
-   /* Generic Access Profile (GAP) structures.                          */
-
-   /* Structure used to hold all of the GAP LE Parameters.              */
-
-#if 1
-typedef struct BLBD_Q_s
-{
-    int event_type;
-    void *data;
-} BLBD_Q_t;
+extern uint16_t BulbState;
 
 BLBD_Q_t *blbd_qdata;
-#endif
 
+BLBD_Q_t timer_signal = {BLBD_PERIODIC_TIMER_SIGNAL_INTR, 0}; 
 
-#if 0
-LBD_Device blbd_devices[BLB_NUM_BULBS];
-BLBD_Temp_Device blbd_temp_devices[BLB_NUM_BULBS];
-BLBD_Q_t scan_result_signal = {BLBD_SCAN_RESULT_SIGNAL_INTR, 0};
-BLBD_Q_t scan_stopped_signal = {BLBD_SCAN_STOPPED_SIGNAL_INTR, 0};
-BLBD_Q_t services_discovered_signal = {BLBD_SERVICE_DISCOVERY_SIGNAL_INTR, 0};
-BLBD_Q_t connection_result_signal = {BLBD_CONNECTION_SUCCESS_SIGNAL_INTR, 0};
-BLBD_Q_t disconnection_result_signal = {BLBD_CONNECTION_FAILED_SIGNAL_INTR, 0};
-#endif
+qapi_TIMER_set_attr_t BLBD_Set_Timer_Attr;
 
+qapi_TIMER_define_attr_t BLBD_Create_Timer_Attr;
 
+qapi_BLE_BD_ADDR_t Current_Conn_Addr = {0};
 
+/* Internal Variables to this Module (Remember that all variables    */
+/* declared static are initialized to 0 automatically by the         */
+/* compiler as part of standard C/C++).                              */
 
+QCLI_Group_Handle_t ble_group;               /* Handle for our main QCLI Command Group. */
 
-
-typedef struct _tagGAPLE_Parameters_t
-{
-   qapi_BLE_GAP_LE_Connectability_Mode_t ConnectableMode;
-   qapi_BLE_GAP_Discoverability_Mode_t   DiscoverabilityMode;
-   qapi_BLE_GAP_LE_IO_Capability_t       IOCapability;
-   boolean_t                             MITMProtection;
-   boolean_t                             SecureConnections;
-   boolean_t                             OOBDataPresent;
-} GAPLE_Parameters_t;
-
-#define GAPLE_PARAMETERS_DATA_SIZE                       (sizeof(GAPLE_Parameters_t))
-
-   /* The following bit mask values may be used for the Flags field of  */
-   /* the BLEParameters_t structure.                                    */
-#define BLE_PARAMETERS_FLAGS_ADVERTISING_PARAMETERS_VALID   0x00000001
-#define BLE_PARAMETERS_FLAGS_SCAN_PARAMETERS_VALID          0x00000002
-#define BLE_PARAMETERS_FLAGS_CONNECTION_PARAMETERS_VALID    0x00000004
-
-   /* The following structure is used to hold the Scan Window and       */
-   /* Interval parameters for LE Scanning.                              */
-typedef struct _tagBLEScanParameters_t
-{
-   uint16_t ScanInterval;
-   uint16_t ScanWindow;
-} BLEScanParameters_t;
-
-   /* The following structure is used to hold information on the        */
-   /* configured Scan/Advertising/Connection Parameters.                */
-typedef struct _tagBLEParameters_t
-{
-   unsigned long                            Flags;
-   qapi_BLE_GAP_LE_Advertising_Parameters_t AdvertisingParameters;
-   qapi_BLE_GAP_LE_Connection_Parameters_t  ConnectionParameters;
-   BLEScanParameters_t                      ScanParameters;
-} BLEParameters_t;
-
-   /* Automation IO Service (AIOS) structures.                          */
-
-   /* The following structure contains the information for an AIOS      */
-   /* Characteristic instance that the AIOS Server will need to store.  */
-   /* * NOTE * The Instance_Entry below will need to be copied to the   */
-   /*          qapi_BLE_AIOS_Characteristic_Entry_t structure, a        */
-   /*          sub-structure of qapi_BLE_AIOS_Initialize_Data_t         */
-   /*          structure, that is expected as a parameter to            */
-   /*          qapi_BLE_AIOS_Initialize_Service().  This is REQUIRED to */
-   /*          intialize the service and allows us to retain the        */
-   /*          information that we used to initialize the service.      */
-   /* * NOTE * Some fields of this structure will not be used.  The     */
-   /*          fields depend on the optional AIOS Characteristic        */
-   /*          descriptors included for this Characteristic instance    */
-   /*          specified by the Instance_Entry field and whether this   */
-   /*          instance is a Digital or Analog Characteristic.          */
-   /* * NOTE * The AIOS Server will support 8 digital signals (2 octets)*/
-   /*          for each Digital Characteristic for simplicity.          */
-typedef struct _tagAIOP_Server_Instance_Data_t
-{
-   qapi_BLE_AIOS_Characteristic_Instance_Entry_t Instance_Entry;
-
-   union
-   {
-      uint8_t                                    Digital[2];
-      uint16_t                                   Analog;
-   } Data;
-
-   uint16_t                                      Client_Configuration;
-   qapi_BLE_AIOS_Presentation_Format_Data_t      Presentation_Format;
-   uint8_t                                       Number_Of_Digitals;
-} AIOP_Server_Instance_Data_t;
-
-#define AIOP_SERVER_INSTANCE_DATA_SIZE                   (sizeof(AIOP_Server_Instance_Data_t))
-
-   /* The following structure contains the information for each AIOS    */
-   /* Digital/Analog Characteristc that the AIOS Server will need to    */
-   /* store.  Information for each AIOS Characteristic instance will be */
-   /* stored by the Instances field.                                    */
-   /* * NOTE * The Characteristic_Entry field below will need to be     */
-   /*          copied to the qapi_BLE_AIOS_Initialize_Data_t structure  */
-   /*          that is expected as a parameter to                       */
-   /*          qapi_BLE_AIOS_Initialize_Service().  This is REQUIRED to */
-   /*          initialize the service and allows us to retain the       */
-   /*          information that we used to intialize the service.       */
-   /* * NOTE * The AIOS Server will support two instances of each AIOS  */
-   /*          Characteristic (Digital and Analog) for simplicity.      */
-typedef struct _tagAIOP_Server_Characteristic_Data_t
-{
-   qapi_BLE_AIOS_Characteristic_Entry_t Characteristic_Entry;
-   AIOP_Server_Instance_Data_t          Instances[AIOP_NUMBER_OF_SUPPORTED_INSTANCES];
-} AIOP_Server_Characteristic_Data_t;
-
-#define AIOP_SERVER_CHARACTERISTIC_DATA_SIZE             (sizeof(AIOP_Server_Characteristic_Data_t))
-
-   /* The following structure contains the AIOS Server information.     */
-   /* This information (and sub structures) are needed to initialize the*/
-   /* AIOS Server with a call to qapi_BLE_AIOS_Initialize_Service().    */
-   /* This structure will also hold the information needed to process   */
-   /* AIOS Server events and will retain the values for AIOS            */
-   /* Characteristics and descriptors.                                  */
-   /* * NOTE * Some fields below will need to be copied to the          */
-   /*          qapi_BLE_AIOS_Initialize_Data_t structure that is        */
-   /*          expected as a parameter to                               */
-   /*          qapi_BLE_AIOS_Initialize_Service().  This is REQUIRED to */
-   /*          initialize the service and allows us to retain the       */
-   /*          information that we used to intialize the service.       */
-   /* * NOTE * The AIOS Server will support two characteristics: the    */
-   /*          Digital and Analog Characteristics, for simplicity.      */
-typedef struct _tagAIOP_Server_Information_t
-{
-   AIOP_Server_Characteristic_Data_t Characteristic[AIOP_NUMBER_OF_SUPPORTED_CHARACTERISTICS];
-} AIOP_Server_Information_t;
-
-#define AIOP_SERVER_INFORMATION_DATA_SIZE                (sizeof(AIOP_Server_Information_t))
-
-   /* The following enumeration will be used to determine the correct   */
-   /* Attribute Handle to select for an AIOS Characteristic or          */
-   /* Descriptor.                                                       */
-typedef enum
-{
-   ahtCharacteristic,
-   ahtClientCharacteristicConfig,
-   ahtPresentationFormat,
-   ahtNumberOfDigitals
-} AIOP_Attribute_Handle_Type_t;
-
-   /* The following structure holds the request information that the    */
-   /* AIOP Client MUST store before issuing a GATT request to the AIOS  */
-   /* Server.  This is so that we can easily handle the response.       */
-   /* * NOTE * The Type and ID fields MUST be valid for all requests    */
-   /*          since this information is required to quickly look up the*/
-   /*          AIOS Characteristic Instance's information associated    */
-   /*          with the request in the GATT_ClientEventCallback_AIOS()  */
-   /*          when the response is received.                           */
-   /* * NOTE * The AttributeHandleType field (Mandatory) allows us to   */
-   /*          specify the type of the attribute handle we are expecting*/
-   /*          in the response.  This way with the Type and ID fields,  */
-   /*          we can quickly locate the correct attribute handle to    */
-   /*          verify.  Otherwise we would need to check every attribute*/
-   /*          handle for a match to know how to process the response.  */
-typedef struct _tagAIOP_Client_Request_Info_t
-{
-   qapi_BLE_AIOS_Characteristic_Type_t Type;
-   uint16_t                            ID;
-   AIOP_Attribute_Handle_Type_t        AttributeHandleType;
-} AIOP_Client_Request_Info_t;
-
-   /* The following structure contains the information that needs to be */
-   /* stored by an AIOS Client for each AIOS Characteristic instance    */
-   /* discovered during service discovery.  This struture also stores   */
-   /* the information that the AIOP Client needs to store when          */
-   /* read/writing AIOS Characteristic instances.                       */
-   /* * NOTE * The Properties field will simply be used to store the    */
-   /*          Characteristic instance properties found during service  */
-   /*          discovery.                                               */
-   /* * NOTE * The Number_Of_Digitals will hold the number of digitals  */
-   /*          that has been automatically read by the AIOS Client if   */
-   /*          the Aggregate Characteristic is discoverd and after      */
-   /*          service discovery has been peformed.  This is REQUIRED   */
-   /*          since in order to decode the Aggregate Characteristic we */
-   /*          MUST know how many digitals are included for each Digital*/
-   /*          Characteristic that is part of the Aggregate             */
-   /*          Characteristic.                                          */
-   /* * NOTE * Either the Digital_Characteristic_Handle or              */
-   /*          Analog_Charactersitic_Handle will be cached.  Only one   */
-   /*          will be cached for this instance and can be determined by*/
-   /*          the Characteristic type (Type field) of the parent       */
-   /*          structure below.                                         */
-   /* * NOTE * The AIOS_Number_Of_Digitals_Handle will only be cached if*/
-   /*          the instance is for a Digital Characteristic.            */
-typedef struct _tagAIOP_Client_Instance_Info_t
-{
-   boolean_t               Valid;
-   uint8_t                 Properties;
-   qapi_BLE_AIOS_IO_Type_t IOType;
-   uint8_t                 Number_Of_Digitals;
-
-   uint16_t                Analog_Charactersitic_Handle;
-   uint16_t                Digital_Characteristic_Handle;
-   uint16_t                CCCD_Handle;
-   uint16_t                Presentation_Format_Handle;
-   uint16_t                Number_Of_Digitals_Handle;
-} AIOP_Client_Instance_Info_t;
-
-#define AIOP_CLIENT_INSTANCE_INFO_SIZE                   (sizeof(AIOP_Client_Instance_Info_t))
-
-   /* The following structure contains the information that needs to be */
-   /* stored by an AIOS Client for a specified AIOS Characteristic type */
-   /* and all of its instances that may be cached by an AIOP Client     */
-   /* during service discovery.                                         */
-typedef struct _tagAIOP_Client_Characteristic_Info_t
-{
-   qapi_BLE_AIOS_Characteristic_Type_t Type;
-   AIOP_Client_Instance_Info_t         Instances[AIOP_NUMBER_OF_SUPPORTED_INSTANCES];
-} AIOP_Client_Characteristic_Info_t;
-
-#define AIOP_CLIENT_CHARACTERISTIC_INFO_SIZE             (sizeof(AIOP_Client_Characteristic_Info_t))
-
-   /* The following structure contains the information that will need to*/
-   /* be cached by a AIOS Client in order to only do service discovery  */
-   /* once.  This structure also contains the information that needs to */
-   /* be stored by an AIOP Client when read/writing AIOS Characteristic */
-   /* instances.                                                        */
-   /* ** NOTE ** This demo will only support the demo's AIOS Server.  If*/
-   /*            it is used to against another AIOS Server, then        */
-   /*            optional Characteristics and descriptors, the Aggregate*/
-   /*            Characteristic, and more Digital and Analog            */
-   /*            Characteristics instances greater than the maximum     */
-   /*            supported by the demo's AIOS Server will not be cached */
-   /*            by the demo's AIOS Client.  This constraint applies to */
-   /*            all sub structures.                                    */
-   /* * NOTE * The Characteristics field may only be valid for a Digital*/
-   /*          or Analog Characteristic.                                */
-   /* * NOTE * The Number_Digital_Characteristics_In_Aggregate field    */
-   /*          will be used to quickly determine how many Digital       */
-   /*          Characteristics are included in the Aggregate            */
-   /*          Characteristic during service discovery.  We can use this*/
-   /*          information to automatically issue GATT read requests    */
-   /*          (after service discovery has been peformed) for the      */
-   /*          Number Of Digitals descriptor for each Digital           */
-   /*          Characteristic included in the Aggregate that needs to be*/
-   /*          cached in order to decode the Aggregate Characteristic.  */
-typedef struct _tagAIOP_Client_Information_t
-{
-   AIOP_Client_Characteristic_Info_t Characteristics[AIOP_NUMBER_OF_SUPPORTED_CHARACTERISTICS];
-   AIOP_Client_Request_Info_t        Client_Request_Info;
-} AIOP_Client_Information_t;
-
-#define AIOP_CLIENT_INFORMATION_DATA_SIZE                (sizeof(AIOP_Client_Information_t))
-
-   /* HID over GATT (HIDS) structures.                                  */
-
-   /* The following structure defines a key mapping.                    */
-typedef struct _tagKeyMapping_t
-{
-   char    Ascii;
-   uint8_t HID;
-   uint8_t Modifiers;
-} KeyMapping_t;
-
-   /* Serial Port Profile over LE (SPPLE) structures.                   */
-
-   /* The following structure holds status information about a send     */
-   /* process.                                                          */
-typedef struct _tagSend_Info_t
-{
-   uint32_t BytesToSend;
-   uint32_t BytesSent;
-} Send_Info_t;
-
-   /* The following defines the format of a SPPLE Data Buffer.          */
-typedef struct __tagSPPLE_Data_Buffer_t
-{
-   unsigned int  InIndex;
-   unsigned int  OutIndex;
-   unsigned int  BytesFree;
-   unsigned int  BufferSize;
-   uint8_t       Buffer[SPPLE_DATA_BUFFER_LENGTH*3];
-} SPPLE_Data_Buffer_t;
-
-   /* Generic Access Profile Service (GAPS) structures.                 */
-
-   /* The following structure represents the information we will store  */
-   /* on a Discovered GAP Service.                                      */
-typedef struct _tagGAPS_Client_Info_t
-{
-   uint16_t DeviceNameHandle;
-   uint16_t DeviceAppearanceHandle;
-} GAPS_Client_Info_t;
-
-   /* The following structure holds information on known Device         */
-   /* Appearance Values.                                                */
-typedef struct _tagGAPS_Device_Appearance_Mapping_t
-{
-   uint16_t  Appearance;
-   char     *String;
-} GAPS_Device_Appearance_Mapping_t;
-
-   /* Remote Device Information structure.                              */
-
-   /* The following bit mask values may be used for the Flags field of  */
-   /* the DeviceInfo_t structure.                                       */
-#define DEVICE_INFO_FLAGS_LTK_VALID                         0x01
-#define DEVICE_INFO_FLAGS_SPPLE_SERVER                      0x02
-#define DEVICE_INFO_FLAGS_SPPLE_CLIENT                      0x04
-#define DEVICE_INFO_FLAGS_SERVICE_DISCOVERY_OUTSTANDING     0x08
-#define DEVICE_INFO_FLAGS_IRK_VALID                         0x10
-#define DEVICE_INFO_FLAGS_ADDED_TO_WHITE_LIST               0x20
-#define DEVICE_INFO_FLAGS_ADDED_TO_RESOLVING_LIST           0x40
-
-
-/* The following structure is used to track the sending and receiving*/
-/* of data for the throughput test.                                  */
-typedef struct _tagXferInfo_t
-{
-   uint64_t  RxCount;
-   boolean_t TimingStarted;
-   uint64_t  FirstTime;
-   uint64_t  LastTime;
-} XferInfo_t;
-
-   /* The following structure holds the information that needs to be    */
-   /* stored for a connected remote device.                             */
-   /* * NOTE * If the local device pairs with the remote device, then   */
-   /*          the LTK MUST ve valid, and the remote device information */
-   /*          MUST persist between connections.  If the local device   */
-   /*          does NOT pair with the remote device, then the LTK will  */
-   /*          NOT be valid, and the remote device information will be  */
-   /*          deleted when the remote device is disconnected.          */
-   /* * NOTE * The ConnectionID will be used to indicate that a remote  */
-   /*          device is currently connected.  Otherwise it will be set */
-   /*          to zero to indicate that the remote device is currently  */
-   /*          disconnected.                                            */
-   /* * NOTE * The SelectedRemoteBD_ADDR will correspond to the         */
-   /*          RemoteAddress field of the remote device that is         */
-   /*          currently connected.                                     */
-typedef struct _tagDeviceInfo_t
-{
-   uint8_t                                Flags;
-   unsigned int                           ConnectionID;
-   boolean_t                              RemoteDeviceIsMaster;
-   qapi_BLE_BD_ADDR_t                     RemoteAddress;
-   qapi_BLE_GAP_LE_Address_Type_t         RemoteAddressType;
-   qapi_BLE_GAP_LE_Address_Type_t         IdentityAddressType;
-   qapi_BLE_BD_ADDR_t                     IdentityAddressBD_ADDR;
-   uint8_t                                EncryptionKeySize;
-   qapi_BLE_Long_Term_Key_t               LTK;
-   qapi_BLE_Encryption_Key_t              IRK;
-   qapi_BLE_Random_Number_t               Rand;
-   uint16_t                               EDIV;
-   qapi_BLE_GAP_LE_White_List_Entry_t     WhiteListEntry;
-   qapi_BLE_GAP_LE_Resolving_List_Entry_t ResolvingListEntry;
-   AIOP_Client_Information_t              AIOPClientInfo;
-   uint16_t                               AIOPServerConfiguration;
-   qapi_BLE_BAS_Client_Information_t      BASClientInfo[MAX_SUPPORTED_BATTERY_INSTANCES];
-   qapi_BLE_BAS_Server_Information_t      BASServerInfo[MAX_SUPPORTED_BATTERY_INSTANCES];
-   GAPS_Client_Info_t                     GAPSClientInfo;
-   qapi_BLE_SCPS_Client_Information_t     SCPSClientInfo;
-   qapi_BLE_SCPS_Server_Information_t     SCPSServerInfo;
-   //HIDS_Client_Info_t                     HIDSClientInfo[MAX_SUPPORTED_HID_INSTANCES];
-  // HIDS_Server_Info_t                     HIDSServerInfo;
-   qapi_BLE_HRS_Client_Information_t      HRSClientInfo;
-   SPPLE_Client_Info_t                    ClientInfo;
-   SPPLE_Server_Info_t                    ServerInfo;
-   unsigned int                           TransmitCredits;
-   SPPLE_Data_Buffer_t                    ReceiveBuffer;
-   SPPLE_Data_Buffer_t                    TransmitBuffer;
-   XferInfo_t                             XferInfo;
-   boolean_t                              ThroughputModeActive;
-   struct _tagDeviceInfo_t               *NextDeviceInfoInfoPtr;
-} DeviceInfo_t;
-
-#define DEVICE_INFO_DATA_SIZE                            (sizeof(DeviceInfo_t))
-
-typedef struct _tagPersistentRemoteDeviceData_t
-{
-   uint8_t                        Flags;
-   qapi_BLE_BD_ADDR_t             LastAddress;
-   qapi_BLE_GAP_LE_Address_Type_t LastAddressType;
-   qapi_BLE_BD_ADDR_t             IdentityAddress;
-   qapi_BLE_GAP_LE_Address_Type_t IdentityAddressType;
-   uint8_t                        EncryptionKeySize;
-   qapi_BLE_Long_Term_Key_t       LTK;
-   qapi_BLE_Encryption_Key_t      IRK;
-} PersistentRemoteDeviceData_t;
-
-#define PERSISTENT_REMOTE_DEVICE_DATA_SIZE               (sizeof(PersistentRemoteDeviceData_t))
-
-#define PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID        0x01
-#define PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID   0x02
-
-typedef struct _tagPersistentData_t
-{
-   qapi_BLE_BD_ADDR_t LocalAddress;
-   uint8_t NumberRemoteDevices;
-   PersistentRemoteDeviceData_t RemoteDevices[1];
-} PersistentData_t;
-
-#define PERSISTENT_DATA_SIZE(_x)                         (QAPI_BLE_BTPS_STRUCTURE_OFFSET(PersistentData_t, RemoteDevices) + (PERSISTENT_REMOTE_DEVICE_DATA_SIZE * (_x)))
-
-   /* Internal Variables to this Module (Remember that all variables    */
-   /* declared static are initialized to 0 automatically by the         */
-   /* compiler as part of standard C/C++).                              */
-
-QCLI_Group_Handle_t ble_group;               /* Handle for our main QCLI Command*/
-                                                    /* Group.                          */
 static DeviceInfo_t *CreateNewDeviceInfoEntry(DeviceInfo_t **ListHead, qapi_BLE_BD_ADDR_t RemoteAddress);
+
 static uint32_t            BluetoothStackID;        /* Variable which holds the Handle */
                                                     /* of the opened Bluetooth Protocol*/
                                                     /* Stack.                          */
 
 static uint32_t            ScanTimerID;             /* Scan Timer ID.                  */
+
+static uint32_t            ConnTimerID;             /*  connection Timer ID.                  */
 
 static qapi_BLE_HCI_DriverInformation_t HCI_DriverInformation;
                                                     /* The HCI Driver structure that   */
@@ -635,12 +91,16 @@ static qapi_BLE_HCI_DriverInformation_t HCI_DriverInformation;
 static unsigned int        ConnectionCount;         /* Holds the number of connected   */
                                                     /* remote devices.                 */
 
-static DeviceInfo_t       *DeviceInfoList;          /* Holds the list head for the     */
+DeviceInfo_t       *DeviceInfoList;          /* Holds the list head for the     */
                                                     /* remote device info list         */
+
+DeviceInfo_t       *PersistDeviceInfoList;
 
 typedef char               BoardStr_t[16];          /* User to represent a structure to*/
                                                     /* hold a BD_ADDR return from      */
                                                     /* BD_ADDRToStr.                   */
+
+
 
    /* Generic Access Profile (GAPLE) Internal Variables.                */
 
@@ -761,6 +221,23 @@ static boolean_t           DisplayAdvertisingEventData; /* Flag to indicate if w
                                                     /* should have verbose adv report  */
                                                     /* outputs.                        */
 
+static qapi_TIMER_handle_t PeriodicScanTimer;
+
+uint32_t blbd_duration = 3000;
+
+uint16_t bulb_char_handle = 0;
+
+int blb_num_bulbs_found = 0;
+
+int blbd_scan_permitted = 0;
+
+#define SCAN_PERMITTED      0x01
+#define MOBILE_CONNECTED    0x02
+
+
+
+//uint8_t state_flags = 0;
+uint8_t state_flags = SCAN_PERMITTED;
 
    /* The following is used to map from ATT Error Codes to a printable  */
    /* string.                                                           */
@@ -831,60 +308,55 @@ static GAPS_Device_Appearance_Mapping_t AppearanceMappings[] =
    /* The following string table is used to map the API I/O Capabilities*/
    /* values to an easily displayable string.                           */
 
-   /* Internal Variables to this Module (Remember that all variables    */
-   /* declared static are initialized to 0 automatically by the         */
-   /* compiler as part of standard C/C++).                              */
-#define CURRENT_TEST_NONE                       0
-#define CURRENT_TEST_TX_ACL                     1
-#define CURRENT_TEST_RX_ACL                     3
-#define CURRENT_TEST_PERIODIC                   4
 
 #define MAXIMUM_TEST_BUFFER                  1024
 
 static unsigned int        NumberACLPackets;
-static unsigned int        NumberOutstandingACLPackets;
-static unsigned int        MaxACLPacketSize;
 
+static unsigned int        NumberOutstandingACLPackets;
+
+static unsigned int        MaxACLPacketSize;
 
 static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Event_Data_t *GAP_LE_Event_Data, uint32_t CallbackParameter);
 
 static QCLI_Command_Status_t StorePersistentData(void);
-static QCLI_Command_Status_t LoadPersistentData(void);
+//static QCLI_Command_Status_t StorePersistentData(DeviceInfo_t *DeviceInfo);
+static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist);
 
 static void QAPI_BLE_BTPSAPI GATT_BLBD_Service_Discovery_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GATT_Service_Discovery_Event_Data_t *GATT_Service_Discovery_Event_Data, uint32_t CallbackParameter);
-//static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo, 
- //  qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData);
-int AddBLBDDevice(qapi_BLE_GAP_LE_Advertising_Report_Data_t *dev_ptr);
+
 static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR);
-//DeviceInfo_t *BLBDGetDeviceInfo(int deviceIndex);
-extern void blbd_disconnection_result(void *disconn_data);
 
 static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Event_Data_t *GAP_LE_Event_Data, uint32_t CallbackParameter);
-int ConnectLEDevice(uint32_t BluetoothStackID, boolean_t UseWhiteList, qapi_BLE_BD_ADDR_t *BD_ADDR, qapi_BLE_GAP_LE_Address_Type_t AddressType);
 
-extern void blbd_scan_result_callback();
-extern void blbd_connection_result_callback();
-//extern void blbd_service_discovery_callback();   
-extern void blbd_scan_stopped_callback();
-extern char* mot_rate_func();
-void BLBDAddScanEntry(void *);
-//void BLBDAttachHandles(void * data);
-int ResetBLBDDeviceData(int devIndex);
+static DeviceInfo_t *SearchDeviceInfoEntryByBD_ADDR(DeviceInfo_t **ListHead, qapi_BLE_BD_ADDR_t RemoteAddress);
+
+
+static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo, 
+   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData);
 
 
 
 /**
- * @func : PHYToString
- * @Desc : The following function converts the PHY to a string for printing
- 
-char *PHYToString(qapi_BLE_GAP_LE_PHY_Type_t PHY)
-{
-    if ((PHY >= QAPI_BLE_LPT_PHY_LE_1M_E) && (PHY <= QAPI_BLE_LPT_PHY_LE_CODED_E))
-        return(PHYMapping[PHY - QAPI_BLE_LPT_PHY_LE_1M_E]);
-    else
-        return (PHYMapping[3]);
+ * @func : CheckEncryptionStatus
+ * @Desc : The following function is responsible for checking the encryption status of a connection.*/
+
+
+
+int CheckEncryptionStatus (qapi_BLE_BD_ADDR_t RemoteDevice) {
+    DeviceInfo_t *DeviceInfo;
+    if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, RemoteDevice)) != NULL) {
+       
+        LOG_ERROR("Device infor %02x",DeviceInfo->Flags );
+        if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_ENCRYPTED) {
+            LOG_ERROR("**********Encrypted\n\n");
+            return 0;                                        
+        }
+    }     
+    return -1;
 }
-*/
+
+
 /**
  * @func : BD_ADDRToStr
  * @Desc : The following function is responsible for converting data of type
@@ -904,111 +376,121 @@ static void DisplayFunctionError(char *Function, int Status)
     LOG_ERROR("%s Failed: %d.\n", Function, Status);
 }
 
+
 static QCLI_Command_Status_t StorePersistentData(void)
 {
-   uint8_t                NumberDevices;
-   uint8_t                Index;
-   DeviceInfo_t          *DeviceInfo;
-   qapi_Status_t          Result;
-   PersistentData_t      *PersistentData;
-   QCLI_Command_Status_t  ret_val;
+    uint8_t                NumberDevices;
+    uint8_t                Index;
+    DeviceInfo_t          *DeviceInfo;
+    qapi_Status_t          Result;
+    PersistentData_t      *PersistentData;
+    QCLI_Command_Status_t  ret_val;
 
-   /* First, check that valid Bluetooth Stack ID exists.                */
-   if(BluetoothStackID)
-   {
-      /* Now make sure the storage handle is initialized.               */
-      if(PersistHandle)
-      {
-         if(!qapi_BLE_BSC_LockBluetoothStack(BluetoothStackID))
-         {
-            DeviceInfo    = DeviceInfoList;
-            NumberDevices = 0;
 
-            while(DeviceInfo)
+    QCLI_Printf(ble_group, "In StorePersistentData\n");
+
+    /* First, check that valid Bluetooth Stack ID exists.                */
+    if(BluetoothStackID)
+    {
+        /* Now make sure the storage handle is initialized.               */
+        if(PersistHandle)
+        {
+            if(!qapi_BLE_BSC_LockBluetoothStack(BluetoothStackID))
             {
-               ++NumberDevices;
-               DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
-            }
 
-            if((PersistentData = (PersistentData_t *)malloc(PERSISTENT_DATA_SIZE(NumberDevices))) != NULL)
-            {
-               memset(PersistentData, 0, PERSISTENT_DATA_SIZE(NumberDevices));
+                DeviceInfo    = PersistDeviceInfoList;
+                NumberDevices = 0;
 
-               PersistentData->LocalAddress        = LocalBD_ADDR;
-               PersistentData->NumberRemoteDevices = NumberDevices;
+                while(DeviceInfo)
+                {
+                    ++NumberDevices;
+                    DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
+                }
 
-               DeviceInfo = DeviceInfoList;
-               Index      = 0;
+                QCLI_Printf(ble_group, "Number of devices %d\n", NumberDevices);
 
-               while(DeviceInfo)
-               {
-                  PersistentData->RemoteDevices[Index].LastAddress     = DeviceInfo->RemoteAddress;
-                  PersistentData->RemoteDevices[Index].LastAddressType = DeviceInfo->RemoteAddressType;
+                if((PersistentData = (PersistentData_t *)malloc(PERSISTENT_DATA_SIZE(NumberDevices))) != NULL)
+                {
+                    memset(PersistentData, 0, PERSISTENT_DATA_SIZE(NumberDevices));
 
-                  if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
-                  {
-                     PersistentData->RemoteDevices[Index].Flags             |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID;
-                     PersistentData->RemoteDevices[Index].EncryptionKeySize  = DeviceInfo->EncryptionKeySize;
-                     PersistentData->RemoteDevices[Index].LTK                = DeviceInfo->LTK;
-                  }
+                    PersistentData->LocalAddress        = LocalBD_ADDR;
+                    PersistentData->NumberRemoteDevices = NumberDevices;
 
-                  if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_IRK_VALID)
-                  {
-                     PersistentData->RemoteDevices[Index].Flags               |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID;
-                     PersistentData->RemoteDevices[Index].IdentityAddress      = DeviceInfo->IdentityAddressBD_ADDR;
-                     PersistentData->RemoteDevices[Index].IdentityAddressType  = DeviceInfo->IdentityAddressType;
-                     PersistentData->RemoteDevices[Index].IRK                  = DeviceInfo->IRK;
-                  }
+                    DeviceInfo = PersistDeviceInfoList;
+                    Index      = 0;
 
-                  ++Index;
-                  DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
-               }
+                    while(DeviceInfo)
+                    {
+                        PersistentData->RemoteDevices[Index].LastAddress     = DeviceInfo->RemoteAddress;
+                        PersistentData->RemoteDevices[Index].LastAddressType = DeviceInfo->RemoteAddressType;
+                        PersistentData->RemoteDevices[Index].device_type =     DeviceInfo->device_type;
+                        if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
+                        {
+                            PersistentData->RemoteDevices[Index].Flags             |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID;
+                            PersistentData->RemoteDevices[Index].EncryptionKeySize  = DeviceInfo->EncryptionKeySize;
+                            PersistentData->RemoteDevices[Index].LTK                = DeviceInfo->LTK;
+                        }
 
-               Result = qapi_Persist_Put(PersistHandle, PERSISTENT_DATA_SIZE(NumberDevices), (uint8_t *)PersistentData);
+                        if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_IRK_VALID)
+                        {
+                            PersistentData->RemoteDevices[Index].Flags               |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID;
+                            PersistentData->RemoteDevices[Index].IdentityAddress      = DeviceInfo->IdentityAddressBD_ADDR;
+                            PersistentData->RemoteDevices[Index].IdentityAddressType  = DeviceInfo->IdentityAddressType;
+                            PersistentData->RemoteDevices[Index].IRK                  = DeviceInfo->IRK;
+                        }
 
-               if(Result == QAPI_OK)
-               {
-                  QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Success.\n");
+                        ++Index;
+                        DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
+                    }
 
-                  ret_val = QCLI_STATUS_SUCCESS_E;
-               }
-               else
-               {
-                  QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Failure: %d.\n", Result);
+                    Result = qapi_Persist_Put(PersistHandle, PERSISTENT_DATA_SIZE(NumberDevices), (uint8_t *)PersistentData);
 
-                  ret_val = QCLI_STATUS_ERROR_E;
-               }
+                    if(Result == QAPI_OK)
+                    {
+                        QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Success.\n");
 
-               free(PersistentData);
+                        ret_val = QCLI_STATUS_SUCCESS_E;
+                    }
+                    else
+                    {
+                        QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Failure: %d.\n", Result);
+
+                        ret_val = QCLI_STATUS_ERROR_E;
+                    }
+
+                    free(PersistentData);
+                }
+                else
+                {
+                    QCLI_Printf(ble_group, "Unable to allocate memory\n");
+
+                    ret_val = QCLI_STATUS_ERROR_E;
+                }
+
+                qapi_BLE_BSC_UnLockBluetoothStack(BluetoothStackID);
             }
             else
             {
-               QCLI_Printf(ble_group, "Unable to allocate memory\n");
+                QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
 
-               ret_val = QCLI_STATUS_ERROR_E;
+                ret_val = QCLI_STATUS_ERROR_E;
             }
-
-            qapi_BLE_BSC_UnLockBluetoothStack(BluetoothStackID);
-         }
-         else
-         {
-            QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+        }
+        else
+        {
+            QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
-         }
-      }
-      else
-      {
-         QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
+        }
+    }
+    else
+        ret_val = QCLI_STATUS_ERROR_E;
 
-         ret_val = QCLI_STATUS_ERROR_E;
-      }
-   }
-   else
-      ret_val = QCLI_STATUS_ERROR_E;
-
-   return(ret_val);
+    return(ret_val);
 }
+
+
+
 
 
 /* The following function deletes (and frees all memory) every       */
@@ -1020,9 +502,162 @@ static void FreeDeviceInfoList(DeviceInfo_t **ListHead)
    qapi_BLE_BSC_FreeGenericListEntryList((void **)(ListHead), QAPI_BLE_BTPS_STRUCTURE_OFFSET(DeviceInfo_t, NextDeviceInfoInfoPtr));
 }
 
+//DeviceInfo_t *DeviceInfoList;
+
+#if 0
+static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
+{
+    uint8_t                Index;
+    uint32_t               DataSize;
+    DeviceInfo_t          *DeviceInfo;
+    DeviceInfo_t          *DeviceInfoList;
+    qapi_Status_t          Result;
+    PersistentData_t      *PersistentData;
+    QCLI_Command_Status_t  ret_val;
 
 
-static QCLI_Command_Status_t LoadPersistentData(void)
+    /* First, check that valid Bluetooth Stack ID exists.                */
+    if(BluetoothStackID)
+    {
+        /* Now make sure the storage handle is initialized.               */
+        if(PersistHandle)
+        {
+            if(!qapi_BLE_BSC_LockBluetoothStack(BluetoothStackID))
+            {
+                /* Don't proceed if there are devices in the list unless a  */
+                /* "force" was specified"                                   */
+                // if(((Parameter_Count >= 1) && (Parameter_List[0].Integer_Is_Valid) && (Parameter_List[0].Integer_Value)) || (!DeviceInfoList))
+                //  {
+                /* Attempt to read the data.                             */
+                Result = qapi_Persist_Get(PersistHandle, &DataSize, (uint8_t **)&PersistentData);
+
+                if(Result == QAPI_OK)
+                {
+                    QCLI_Printf(ble_group, "qapi_Persist_Get() Success. Number devices: %u\n", PersistentData->NumberRemoteDevices);
+                    /* Verify the data and length seem valid.             */
+                    if((PersistentData) && (DataSize >= PERSISTENT_DATA_SIZE(0)) && (DataSize >= PERSISTENT_DATA_SIZE(PersistentData->NumberRemoteDevices)))
+                    {
+                        /* Verify the the local BD_ADDRs match.            */
+                        if(QAPI_BLE_COMPARE_BD_ADDR(LocalBD_ADDR, PersistentData->LocalAddress))
+                        {
+
+
+                            /* Clear the list if it is not empty (user      */
+                            /* specified "force").                          */
+                            if(DeviceInfoList)
+                            {
+                                QCLI_Printf(ble_group, "Warning: Device List is not empty. It will be cleared.\n");
+                                FreeDeviceInfoList(&DeviceInfoList);
+                                DeviceInfoList = NULL;
+                            }
+
+                            /* Data all seems valid, so build the device    */
+                            /* list.                                        */
+                            for(Index=0;Index<PersistentData->NumberRemoteDevices;Index++)
+                            {
+                                /* Attempt to create a new list entry for the*/
+                                /* device.                                   */
+                                if((DeviceInfo = CreateNewDeviceInfoEntry(&DeviceInfoList, PersistentData->RemoteDevices[Index].LastAddress)) != NULL)
+                                {
+                                    /* Note the address type of the address   */
+                                    /* used to create the entry.              */
+                                    DeviceInfo->RemoteAddressType = PersistentData->RemoteDevices[Index].LastAddressType;
+
+                                    /* Note any encryption information if     */
+                                    /* valid.                                 */
+                                    if(PersistentData->RemoteDevices[Index].Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID)
+                                    {
+                                        DeviceInfo->Flags             |= DEVICE_INFO_FLAGS_LTK_VALID;
+                                        DeviceInfo->EncryptionKeySize  = PersistentData->RemoteDevices[Index].EncryptionKeySize;
+                                        DeviceInfo->LTK                = PersistentData->RemoteDevices[Index].LTK;
+                                    }
+
+                                    /* Note any identity information if valid.*/
+                                    if(PersistentData->RemoteDevices[Index].Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID)
+                                    {
+                                        DeviceInfo->Flags                  |= DEVICE_INFO_FLAGS_IRK_VALID;
+                                        DeviceInfo->IdentityAddressBD_ADDR  = PersistentData->RemoteDevices[Index].IdentityAddress;
+                                        DeviceInfo->IdentityAddressType     = PersistentData->RemoteDevices[Index].IdentityAddressType;
+                                        DeviceInfo->IRK                     = PersistentData->RemoteDevices[Index].IRK;
+
+                                        /* We also need to set up the resolving*/
+                                        /* list entry, since this is done in   */
+                                        /* the GAP LE Auth callback.           */
+                                        DeviceInfo->ResolvingListEntry.Peer_Identity_Address      = DeviceInfo->IdentityAddressBD_ADDR;
+                                        DeviceInfo->ResolvingListEntry.Peer_Identity_Address_Type = DeviceInfo->IdentityAddressType;
+                                        DeviceInfo->ResolvingListEntry.Peer_IRK                   = DeviceInfo->IRK;
+                                        DeviceInfo->ResolvingListEntry.Local_IRK                  = IRK;
+                                    }
+                                }
+                                else
+                                {
+                                    QCLI_Printf(ble_group, "Failed to create device entry\n");
+                                }
+                            }
+
+                            QCLI_Printf(ble_group, "Persistent data loaded\n");
+
+                            ret_val = QCLI_STATUS_SUCCESS_E;
+
+                        } 
+
+                    }
+                    else
+                    {
+                        QCLI_Printf(ble_group, "Local BD_ADDR does not match persistent data. The persistent data is invalid.\n");
+
+                        ret_val = QCLI_STATUS_ERROR_E;
+                    }
+                }
+                else
+                {
+                    QCLI_Printf(ble_group, "Persistent data is invalid\n");
+
+                    ret_val = QCLI_STATUS_ERROR_E;
+                }
+
+                qapi_Persist_Free(PersistHandle, (uint8_t *)PersistentData);
+            }
+            else
+            {
+                QCLI_Printf(ble_group, "qapi_Persist_Get() Failure: %d\n", Result);
+
+                ret_val = QCLI_STATUS_ERROR_E;
+            }
+            //  }
+            /* else
+               {
+               QCLI_Printf(ble_group, "Device List is not empty.\n");
+
+               ret_val = QCLI_STATUS_ERROR_E;
+               }*/
+
+            qapi_BLE_BSC_UnLockBluetoothStack(BluetoothStackID);
+        }
+
+        else
+        {
+            QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+
+            ret_val = QCLI_STATUS_ERROR_E;
+        }
+        else
+        {
+            QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
+
+            ret_val = QCLI_STATUS_ERROR_E;
+        }
+    }
+    else { 
+        ret_val = QCLI_STATUS_ERROR_E;
+    }
+    *HeadList = DeviceInfoList;
+    return(ret_val);
+}
+#endif  /*Waste*/
+
+
+static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
 {
    uint8_t                Index;
    uint32_t               DataSize;
@@ -1030,6 +665,7 @@ static QCLI_Command_Status_t LoadPersistentData(void)
    qapi_Status_t          Result;
    PersistentData_t      *PersistentData;
    QCLI_Command_Status_t  ret_val;
+   DeviceInfo_t          *DeviceInfoList =  NULL;
 
    /* First, check that valid Bluetooth Stack ID exists.                */
    if(BluetoothStackID)
@@ -1075,6 +711,7 @@ static QCLI_Command_Status_t LoadPersistentData(void)
                               /* Note the address type of the address   */
                               /* used to create the entry.              */
                               DeviceInfo->RemoteAddressType = PersistentData->RemoteDevices[Index].LastAddressType;
+                              DeviceInfo->device_type        = PersistentData->RemoteDevices[Index].device_type; 
 
                               /* Note any encryption information if     */
                               /* valid.                                 */
@@ -1158,11 +795,17 @@ static QCLI_Command_Status_t LoadPersistentData(void)
          ret_val = QCLI_STATUS_ERROR_E;
       }
    }
-   else
+   else{ 
+    
       ret_val = QCLI_STATUS_ERROR_E;
-
+   }
+    *Headlist = DeviceInfoList;
    return(ret_val);
 }
+
+
+
+
 
 /**
  * @func : SearchDeviceInfoEntryByBD_ADDR
@@ -1182,6 +825,7 @@ static DeviceInfo_t *SearchDeviceInfoEntryByBD_ADDR(DeviceInfo_t **ListHead, qap
         {
             if (QAPI_BLE_COMPARE_BD_ADDR(DeviceInfo->RemoteAddress, RemoteAddress))
             {
+                LOG_VERBOSE("Found device ********************\n\n");
                 ret_val = DeviceInfo;
                 break;
             }
@@ -1219,6 +863,34 @@ static DeviceInfo_t *SearchDeviceInfoEntryByBD_ADDR(DeviceInfo_t **ListHead, qap
     return (ret_val);
 }
 
+
+
+
+static DeviceInfo_t *SearchDeviceInfoEntryByType(DeviceInfo_t **ListHead, uint8_t type)
+{
+   
+    QCLI_Printf(ble_group, "In SearchDeviceInfoEntryByType\n");
+    DeviceInfo_t *DeviceInfo;
+
+    if (ListHead)
+    {
+
+        DeviceInfo = *ListHead;
+        while (DeviceInfo)
+        {
+            if (DeviceInfo->device_type == type)
+            {
+
+               return ( DeviceInfo);
+            }
+            
+            DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
+        }
+    }
+
+    return NULL;
+}
+
 /**
  * @func : SearchDeviceInfoEntryByBD_ADDR
  * @Desc : The following function searches the specified List for the
@@ -1250,7 +922,7 @@ static DeviceInfo_t *DeleteDeviceInfoEntry(DeviceInfo_t **ListHead, qapi_BLE_BD_
 
 /**
  * @func : CreateNewDeviceInfoEntry
- * @Desc : he following function will create a device information entry and
+ * @Desc : the following function will create a device information entry and
  *         add it to the specified List
  */
 static DeviceInfo_t *CreateNewDeviceInfoEntry(DeviceInfo_t **ListHead, qapi_BLE_BD_ADDR_t RemoteAddress)
@@ -1496,6 +1168,7 @@ static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothSt
                         {
                             DeviceInfo->Flags &= ~DEVICE_INFO_FLAGS_SERVICE_DISCOVERY_OUTSTANDING;
                             DeviceInfo->ConnectionID = 0;
+                            LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                         }
                         else
                         {
@@ -1528,6 +1201,7 @@ static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothSt
                 }
                 else
                     LOG_ERROR("Error - Null Disconnection Data.\n");
+                LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                 break;
             case QAPI_BLE_ET_GATT_CONNECTION_SERVER_NOTIFICATION_E:
                 if (GATT_Connection_Event_Data->Event_Data.GATT_Server_Notification_Data)
@@ -1578,7 +1252,7 @@ static int OpenStack(qapi_BLE_HCI_DriverInformation_t *HCI_DriverInformation)
     uint8_t                TempData;
     uint8_t                Status;
     uint32_t               passkey = 123456; /*Setting the default passkey*/
-    char                   BLE_NAME[20] = "Q4020_GES";
+    char                   BLE_NAME[20] = "QCA";
 
     if (!BluetoothStackID)
     {
@@ -1636,12 +1310,21 @@ static int OpenStack(qapi_BLE_HCI_DriverInformation_t *HCI_DriverInformation)
                 QAPI_BLE_ASSIGN_BD_ADDR(SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
                 QAPI_BLE_ASSIGN_BD_ADDR(BLBD_SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
 
+
+
                 qapi_BLE_GAP_LE_Diversify_Function(BluetoothStackID, (qapi_BLE_Encryption_Key_t *)(&IR), 1,0, &IRK);
                 qapi_BLE_GAP_LE_Diversify_Function(BluetoothStackID, (qapi_BLE_Encryption_Key_t *)(&IR), 3, 0, &DHK);
+
+
 
                 DeviceInfoList = NULL;
 
                 Result = qapi_Persist_Initialize(&PersistHandle, "/spinor/ble", "ble_data", ".bin", NULL, 0);
+               
+                LOG_VERBOSE("Persistent handle after initializing.... %p \n", PersistHandle );
+    
+
+                
                 if (Result < 0)
                     LOG_ERROR("Persistent Storage Initialization Failed: %d\n", Result);
 
@@ -1649,7 +1332,11 @@ static int OpenStack(qapi_BLE_HCI_DriverInformation_t *HCI_DriverInformation)
                 if ((Result = qapi_BLE_GATT_Initialize(BluetoothStackID, (QAPI_BLE_GATT_INITIALIZATION_FLAGS_SUPPORT_LE | QAPI_BLE_GATT_INITIALIZATION_FLAGS_DISABLE_SERVICE_CHANGED_CHARACTERISTIC), GATT_Connection_Event_Callback, 0)) == 0)
                 {
                    
+
+
                     Result = qapi_BLE_GAPS_Initialize_Service(BluetoothStackID, &ServiceID);
+                    
+                    
                     if (Result > 0)
                     {
                         GAPSInstanceID = (unsigned int)Result;
@@ -1658,6 +1345,8 @@ static int OpenStack(qapi_BLE_HCI_DriverInformation_t *HCI_DriverInformation)
                         qapi_BLE_GAPS_Set_Device_Appearance(BluetoothStackID, GAPSInstanceID, QAPI_BLE_GAP_DEVICE_APPEARANCE_VALUE_GENERIC_COMPUTER);
 
                         Result = qapi_BLE_GAP_LE_Set_Address_Resolution_Enable(BluetoothStackID, TRUE);
+                        
+                        
                         if (!Result)
                         {
                             qapi_BLE_GAPS_Set_Central_Address_Resolution(BluetoothStackID, GAPSInstanceID, QAPI_BLE_GAR_ENABLED_E);
@@ -1895,7 +1584,7 @@ static int CloseStack(void)
         LOG_INFO("Stack Shutdown.\n");
 
         /* Free all remote device information entries.                    */
-        //FreeDeviceInfoList(&DeviceInfoList);
+        FreeDeviceInfoList(&DeviceInfoList);
         DeviceInfoList   = NULL;
 
         /* Flag that the Stack is no longer initialized.                  */
@@ -2257,12 +1946,15 @@ static void DisplayPairingInformation(qapi_BLE_GAP_LE_Extended_Pairing_Capabilit
  */
 static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Event_Data_t *GAP_LE_Event_Data, uint32_t CallbackParameter)
 {
+
+    QCLI_Command_Status_t                                  status_persistent;
     boolean_t                                              DisplayPrompt;
     int                                                    Result;
     uint16_t                                               EDIV;
     BoardStr_t                                             BoardStr;
     unsigned int                                           Index;
     DeviceInfo_t                                          *DeviceInfo;
+    DeviceInfo_t                                          *DeviceInfo_persistlist;
     qapi_BLE_Random_Number_t                               RandomNumber;
     qapi_BLE_Long_Term_Key_t                               GeneratedLTK;
     qapi_BLE_GAP_LE_Security_Information_t                 GAP_LE_Security_Information;
@@ -2614,6 +2306,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                         }
                     }
                 }
+                state_flags = state_flags | MOBILE_CONNECTED;
                 break;
             case QAPI_BLE_ET_LE_DISCONNECTION_COMPLETE_E:
                 LOG_INFO("etLE_Disconnection_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
@@ -2629,13 +2322,18 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                     SendInfo.BytesToSend = 0;
                     SendInfo.BytesSent   = 0;
                 }
+                if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Peer_Address)) != NULL){ 
+                    if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_ENCRYPTED) {
+                       DeviceInfo->Flags = DeviceInfo->Flags & (~DEVICE_INFO_FLAGS_ENCRYPTED);
+                        LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
+                }
+                     
+                }
+                
+                state_flags = state_flags & ~MOBILE_CONNECTED;
+
                 // To advertise after disconnection
-
-
-                QCLI_Command_Status_t status_persistent;
-                status_persistent = StorePersistentData();
-                LOG_VERBOSE("   Status of the persistent storage : 0x%02X.\n", status_persistent);
-               
+                
                 AdvertiseLE(1);
               
                 break;
@@ -2676,7 +2374,17 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                 break;
             case QAPI_BLE_ET_LE_ENCRYPTION_CHANGE_E:
                 LOG_VERBOSE("etLE_Encryption_Change with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
-                break;
+                    if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data->BD_ADDR)) != NULL) { 
+                        QCLI_Printf(ble_group, "flags %02x\n", DeviceInfo->Flags); 
+                        DeviceInfo->Flags = DeviceInfo->Flags | DEVICE_INFO_FLAGS_ENCRYPTED;
+                        QCLI_Printf(ble_group, "flags %02x\n", DeviceInfo->Flags); 
+                        
+                        if((GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data) != NULL) { 
+                            BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data->BD_ADDR, BoardStr);     
+                            QCLI_Printf(ble_group, "      BD_ADDR: %s. \n", BoardStr); 
+                        }
+                    }
+                    break;
             case QAPI_BLE_ET_LE_ENCRYPTION_REFRESH_COMPLETE_E:
                 LOG_VERBOSE("etLE_Encryption_Refresh_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
                 break;
@@ -2701,10 +2409,13 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
 
                             if((Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.EDIV == EDIV) && (QAPI_BLE_COMPARE_RANDOM_NUMBER(Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.Rand, RandomNumber)))
                             {
+                                LOG_VERBOSE("inside 1\n");
                                 if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, Authentication_Event_Data->BD_ADDR)) != NULL)
                                 {
+                                        LOG_VERBOSE("inside 3\n");
                                     if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
                                     {
+                                        LOG_VERBOSE("inside 3\n");
                                         GAP_LE_Authentication_Response_Information.Authentication_Data_Length                                        = QAPI_BLE_GAP_LE_LONG_TERM_KEY_INFORMATION_DATA_SIZE;
                                         GAP_LE_Authentication_Response_Information.Authentication_Data.Long_Term_Key_Information.Encryption_Key_Size = DeviceInfo->EncryptionKeySize;
 
@@ -2714,6 +2425,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                             }
                             else
                             {
+                                LOG_VERBOSE("inside 4\n");
                                 Result = qapi_BLE_GAP_LE_Regenerate_Long_Term_Key(BluetoothStackID, (qapi_BLE_Encryption_Key_t *)(&DHK), (qapi_BLE_Encryption_Key_t *)(&ER), Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.EDIV, &(Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.Rand), &GeneratedLTK);
                                 if(!Result)
                                 {
@@ -2729,6 +2441,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                                     LOG_VERBOSE("      GAP_LE_Regenerate_Long_Term_Key returned %d.\n",Result);
                                 }
                             }
+                            LOG_VERBOSE("inside 5\n");
 
                             Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                             if(Result)
@@ -2992,6 +2705,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                                 if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, Authentication_Event_Data->BD_ADDR)) != NULL)
                                 {
                                     DeviceInfo->Flags &= ~DEVICE_INFO_FLAGS_LTK_VALID;
+                                    LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                                 }
                             }
 
@@ -3004,6 +2718,29 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                             if(Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status == QAPI_BLE_GAP_LE_PAIRING_STATUS_NO_ERROR)
                             {
                                 LOG_VERBOSE("        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
+
+#if 1 
+                                if ((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Authentication_Event_Data->BD_ADDR)) != NULL) {
+                                    DeviceInfo -> device_type = DEVICE_TYPE_MOBILE;
+                                        if ((DeviceInfo_persistlist = SearchDeviceInfoEntryByType(&PersistDeviceInfoList,DEVICE_TYPE_MOBILE)) != NULL) { 
+                                                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+                                        }  else {
+
+                                            if((DeviceInfo_persistlist = CreateNewDeviceInfoEntry(&PersistDeviceInfoList, Authentication_Event_Data->BD_ADDR )) != NULL)                    
+                                            {
+
+                                                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+                                                QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+
+                                            }
+
+                                        }
+
+                                }
+
+                                status_persistent = StorePersistentData();
+                                QCLI_Printf(ble_group,"status of persistent storage after mobile device conn: %d\n",status_persistent );
+#endif
                             }
                             else
                             {
@@ -3045,6 +2782,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                                 memcpy(&(DeviceInfo->Rand), &(Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Rand), sizeof(DeviceInfo->Rand));
                                 DeviceInfo->EncryptionKeySize = Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Encryption_Key_Size;
                                 DeviceInfo->Flags            |= DEVICE_INFO_FLAGS_LTK_VALID;
+                                LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                             }
                             else
                             {
@@ -3060,6 +2798,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                                 DeviceInfo->IdentityAddressBD_ADDR = Authentication_Event_Data->Authentication_Event_Data.Identity_Information.Address;
                                 DeviceInfo->IdentityAddressType    = Authentication_Event_Data->Authentication_Event_Data.Identity_Information.Address_Type;
                                 DeviceInfo->Flags                 |= DEVICE_INFO_FLAGS_IRK_VALID;
+                                LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
 
                                 DeviceInfo->ResolvingListEntry.Peer_Identity_Address      = DeviceInfo->IdentityAddressBD_ADDR;
                                 DeviceInfo->ResolvingListEntry.Peer_Identity_Address_Type = DeviceInfo->IdentityAddressType;
@@ -3381,8 +3120,8 @@ int AdvertiseLE(uint32_t enable)
                                     /* parameters.                                     */
                                     BLEParameters.AdvertisingParameters.Scan_Request_Filter       = QAPI_BLE_FP_NO_FILTER_E;
                                     BLEParameters.AdvertisingParameters.Connect_Request_Filter    = QAPI_BLE_FP_NO_FILTER_E;
-                                    BLEParameters.AdvertisingParameters.Advertising_Interval_Min  = 100;
-                                    BLEParameters.AdvertisingParameters.Advertising_Interval_Max  = 200;
+                                    BLEParameters.AdvertisingParameters.Advertising_Interval_Min  = 400;
+                                    BLEParameters.AdvertisingParameters.Advertising_Interval_Max  = 600;
 
                                     /* Flag that the parameters are valid so we don't  */
                                     /* set them unnecessarily.                         */
@@ -3521,52 +3260,6 @@ int BT_Stk_Id()
 
 /************************************************** Central Role STart ***********************************************/
 
-uint32_t blbd_duration = 3000;
-BLBD_Q_t timer_signal = {BLBD_PERIODIC_TIMER_SIGNAL_INTR, 0}; 
-qapi_TIMER_set_attr_t BLBD_Set_Timer_Attr;
-static qapi_TIMER_handle_t PeriodicScanTimer;
-qapi_TIMER_define_attr_t BLBD_Create_Timer_Attr;
-
-int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t FilterPolicy, unsigned int ScanDuration);
-int blb_num_bulbs_found = 0;
-int blbd_scan_permitted = 1;
-
-typedef struct blbd_device_chars
-{
-   uint8_t                 Properties;
-   uint16_t                Characteristic_Handle;
-   uint16_t                CCCD_Handle;
-}BLBD_DEVICE_CHARS;
-
-typedef struct blbd_dev_Instance_Info_t
-{
-   qapi_BLE_GAP_LE_Advertising_Report_Data_t * scan_data;
-   DeviceInfo_t *connection_info;
-   BLBD_DEVICE_CHARS *dev_chars;
-   int valid;
-
-}BLBD_Device;
-
-typedef struct blbd_temp_dev_Instance_Info_t
-{
-   qapi_BLE_GAP_LE_Advertising_Report_Data_t scan_data;
-   int valid;
-
-}BLBD_Temp_Device;
-
-
-qapi_BLE_BD_ADDR_t Current_Conn_Addr = {0};
-
-uint16_t bulb_char_handle = 0;
-
-
-#if 1
-static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo, 
-   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData);
-
-DeviceInfo_t *BLBDGetDeviceInfo(int deviceIndex);
-#endif // keep it for last
-
 void BLBDWriteData(uint32_t val)
 {
    int attr_len;
@@ -3586,7 +3279,7 @@ void BLBDWriteData(uint32_t val)
             }
             else if (Result == QAPI_BLE_GATT_ERROR_INVALID_CONNECTION_ID)
             {
-               //ResetBLBDDeviceData(deviceIndex);   
+                  
                DisplayFunctionError("qapi_BLE_GATT_Write_Request", Result);
 
             }
@@ -3727,11 +3420,14 @@ char BD_Addr_Blb[16];
 
 int blbd_start_scan()
 {
-   QCLI_Printf(ble_group, "inside blbd_start_scan \n");
+   int res;
+    QCLI_Printf(ble_group, "inside blbd_start_scan \n");
 
-    MscStartScan(BluetoothStackID, QAPI_BLE_FP_NO_FILTER_E, 5);
-
-   return 0;
+    res = MscStartScan(BluetoothStackID, QAPI_BLE_FP_NO_FILTER_E, 3);
+    if(!res)
+    QCLI_Printf(ble_group, "Scan started successfully\n");
+   
+    return res ;
 }
 
   /* The following function is responsible for stopping on on-going    */
@@ -3784,15 +3480,7 @@ void BSC_Timer_Callback(uint32_t BluetoothStackID, uint32_t TimerID, uint32_t Ca
       /* Stop scanning.                                                 */
       StopScan(BluetoothStackID);
 #ifdef HOME_AUTOMATION
-      if(blb_num_bulbs_found)
-      {
-         //blbd_scan_result_callback();
-      }
-      else
-      {
-         //blbd_scan_stopped_callback();
-      }
-
+    
       //BLBDClearTempScanData();
       blb_num_bulbs_found = 0;
       //blbd_scan_permitted = 1;
@@ -3803,6 +3491,32 @@ void BSC_Timer_Callback(uint32_t BluetoothStackID, uint32_t TimerID, uint32_t Ca
 }
 
 
+void Conn_Timer_Callback(uint32_t BluetoothStackID, uint32_t TimerID, uint32_t CallbackParameter)
+{
+
+
+    QCLI_Printf(ble_group, "In Conn_Timer_Callback\n");
+    int ConnResult;
+   /* Verify the input parameters.                                      */
+   if(BluetoothStackID)
+   {
+      QCLI_Printf(ble_group, "Cancel the connection,if no response is received  within %u seconds.\n", CallbackParameter);
+      ConnResult = qapi_BLE_GAP_LE_Cancel_Create_Connection(BluetoothStackID);
+
+      if(!ConnResult)
+          QCLI_Printf(ble_group, "cancel Create connection successfull\n");
+      else
+          QCLI_Printf(ble_group, "Failed to cancel the existing connection\n");
+
+      //WHY?????????????????????
+        //BulbState = BULB_STATE_DISCONNECTED ;
+   
+   
+   }
+
+
+
+}
 
 /* The following function is responsible for starting a scan.        */
 int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t FilterPolicy, unsigned int ScanDuration)
@@ -3872,22 +3586,18 @@ int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t Filt
 static uint32_t cnt = 0; 
 void timer_callback()
 {
-    QCLI_Printf(ble_group, "blbd_scan_permitted %d\r\n",blbd_scan_permitted);
-    if(blbd_scan_permitted)
+
+
+    if((state_flags & SCAN_PERMITTED) && (state_flags & MOBILE_CONNECTED))
     {
-        QCLI_Printf(ble_group, "blbd_scan_permitted1111 %d\r\n",blbd_scan_permitted);
         //scan at an interval of 20 secs
         switch (cnt%6)
         {
             case 0:
-            QCLI_Printf(ble_group, "blbd_scan_permitted2222 %d\r\n",blbd_scan_permitted);
                 //fall through if scan is not needed
-                if(blbd_start_scan())
-                {
-                    BulbState = BULB_STATE_DISCONNECTED;
-                    QCLI_Printf(ble_group, "BLBD timer/scan event received\n");
-                    blbd_scan_permitted = 0;
-                }
+#if 1    
+            blbd_start_scan();  
+#endif
                 break;
             default:
                 break;
@@ -3901,7 +3611,6 @@ void timer_callback()
     }
     /*Send notification for BULB	*/
     notify_bulb_state();
-    QCLI_Printf(ble_group, "%d\n",cnt);
     cnt++;
 }
 
@@ -4096,9 +3805,9 @@ static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo,
                      /* Store the attribute handle information for    */
                      /* this Digital Characteristic.                  */
                         InstanceInfoPtr[0].Characteristic_Handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
-			bulb_char_handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
-			BLBDWriteData(0xFFFFFFFF);
-			BulbState = BULB_STATE_ON;
+			            bulb_char_handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
+			            BLBDWriteData(0xFFFFFFFF);
+			            BulbState = BULB_STATE_ON;
                      }
                      /* Call the helper function to populate the      */
                      /* descriptor handles for this attribute handle  */
@@ -4159,6 +3868,8 @@ static void QAPI_BLE_BTPSAPI GATT_BLBD_Service_Discovery_Event_Callback(uint32_t
                   /* Flag that no service discovery operation is        */
                   /* outstanding for this device.                       */
                   DeviceInfo->Flags &= ~DEVICE_INFO_FLAGS_SERVICE_DISCOVERY_OUTSTANDING;
+                  LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
+                  
                   //blbd_service_discovery_callback();
                }
                break;
@@ -4210,6 +3921,7 @@ static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR)
                   /* Flag that a Service Discovery Operation is         */
                   /* outstanding.                                       */
                   DeviceInfo->Flags |= DEVICE_INFO_FLAGS_SERVICE_DISCOVERY_OUTSTANDING;
+                  LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
 
                   ret_val = QCLI_STATUS_SUCCESS_E;
                }
@@ -4318,6 +4030,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
    BoardStr_t                                             BoardStr;
    unsigned int                                           Index;
    DeviceInfo_t                                          *DeviceInfo;
+   DeviceInfo_t                                          *DeviceInfo_persistlist;
    qapi_BLE_Random_Number_t                               RandomNumber;
    qapi_BLE_Long_Term_Key_t                               GeneratedLTK;
    qapi_BLE_GAP_LE_Security_Information_t                 GAP_LE_Security_Information;
@@ -4326,6 +4039,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
    qapi_BLE_GAP_LE_Authentication_Event_Data_t           *Authentication_Event_Data;
    qapi_BLE_GAP_LE_Direct_Advertising_Report_Data_t      *DirectDeviceEntryPtr;
    qapi_BLE_GAP_LE_Authentication_Response_Information_t  GAP_LE_Authentication_Response_Information;
+   QCLI_Command_Status_t                                  status;
 
    /* Verify that all parameters to this callback are Semi-Valid.       */
    if((BluetoothStackID) && (GAP_LE_Event_Data))
@@ -4425,9 +4139,11 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
    	  {
 		QCLI_Printf(ble_group, "BLBD Print - device found %s, Connecting\n", str);
 		/*Call connect API*/
-		StopScan(BluetoothStackID);
-		ConnectLEDevice(BluetoothStackID, FALSE, &(DeviceEntryPtr->BD_ADDR),DeviceEntryPtr->Address_Type);
-	  } 
+#if 1
+        StopScan(BluetoothStackID);
+        ConnectLEDevice(BluetoothStackID, FALSE, &(DeviceEntryPtr->BD_ADDR),DeviceEntryPtr->Address_Type);
+#endif
+      } 
 #endif
                
                /* Display the Address Type.                             */
@@ -4485,95 +4201,104 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 
             if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data)
             {
-               BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, BoardStr);
+                BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, BoardStr);
 
-               QCLI_Printf(ble_group, "   Status:              0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status);
-               QCLI_Printf(ble_group, "   Role:                %s.\n", (GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master)?"Master":"Slave");
-               switch(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type)
-               {
-                  case QAPI_BLE_LAT_PUBLIC_E:
-                     QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
-                     break;
-                  case QAPI_BLE_LAT_RANDOM_E:
-                     QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
-                     break;
-                  case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
-                     QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
-                     break;
-                  case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
-                     QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
-                     break;
-                  default:
-                     QCLI_Printf(ble_group, "   Address Type:        Invalid.\n");
-                     break;
-               }
-               QCLI_Printf(ble_group, "   BD_ADDR:             %s.\n", BoardStr);
+                QCLI_Printf(ble_group, "   Status:              0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status);
+                QCLI_Printf(ble_group, "   Role:                %s.\n", (GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master)?"Master":"Slave");
+                switch(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type)
+                {
+                    case QAPI_BLE_LAT_PUBLIC_E:
+                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
+                        break;
+                    case QAPI_BLE_LAT_RANDOM_E:
+                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
+                        break;
+                    case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
+                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
+                        break;
+                    case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
+                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
+                        break;
+                    default:
+                        QCLI_Printf(ble_group, "   Address Type:        Invalid.\n");
+                        break;
+                }
+                QCLI_Printf(ble_group, "   BD_ADDR:             %s.\n", BoardStr);
 
-               if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status == QAPI_BLE_HCI_ERROR_CODE_NO_ERROR)
-               {
-                  QCLI_Printf(ble_group, "   Connection Interval: %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Connection_Interval);
-                  QCLI_Printf(ble_group, "   Slave Latency:       %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Slave_Latency);
+                if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status == QAPI_BLE_HCI_ERROR_CODE_NO_ERROR)
+                {
+                    QCLI_Printf(ble_group, "   Connection Interval: %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Connection_Interval);
+                    QCLI_Printf(ble_group, "   Slave Latency:       %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Slave_Latency);
 
-                  /* Store the GAP LE Connection information that needs */
-                  /* to be stored for the remote device.                */
-                  /* * NOTE * These are temporary globals that will hold*/
-                  /*          information that needs to be stored for   */
-                  /*          the remote device that just connected.    */
-                  /* * NOTE * For consistency, this information will NOT*/
-                  /*          be stored until the GATT Connection       */
-                  /*          Complete event has been received.  This   */
-                  /*          event ALWAYS follows the GAP LE Connection*/
-                  /*          Complete event.                           */
-                  LocalDeviceIsMaster =  GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master;
-                  RemoteAddressType   = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type;
+                    /* Store the GAP LE Connection information that needs */
+                    /* to be stored for the remote device.                */
+                    /* * NOTE * These are temporary globals that will hold*/
+                    /*          information that needs to be stored for   */
+                    /*          the remote device that just connected.    */
+                    /* * NOTE * For consistency, this information will NOT*/
+                    /*          be stored until the GATT Connection       */
+                    /*          Complete event has been received.  This   */
+                    /*          event ALWAYS follows the GAP LE Connection*/
+                    /*          Complete event.                           */
+                    LocalDeviceIsMaster =  GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master;
+                    RemoteAddressType   = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type;
 
-                  /* Attempt to find the entry via the address and      */
-                  /* address type.  This function will update the entry */
-                  /* if it is found to already exist and resolution is  */
-                  /* now being done in the controller.                  */
-                  if((DeviceInfo = SearchDeviceInfoEntryTypeAddress(&DeviceInfoList, GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type, GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address)) != NULL)
-                  {
-                     uint8_t            Peer_Identity_Address_Type;
-                     uint8_t            StatusResult;
-                     qapi_BLE_BD_ADDR_t Peer_Identity_Address;
-                     qapi_BLE_BD_ADDR_t Local_Resolvable_Address;
+                    /* Attempt to find the entry via the address and      */
+                    /* address type.  This function will update the entry */
+                    /* if it is found to already exist and resolution is  */
+                    /* now being done in the controller.                  */
+                    if((DeviceInfo = SearchDeviceInfoEntryTypeAddress(&DeviceInfoList, GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type, GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address)) != NULL)
+                    {
+                        uint8_t            Peer_Identity_Address_Type;
+                        uint8_t            StatusResult;
+                        qapi_BLE_BD_ADDR_t Peer_Identity_Address;
+                        qapi_BLE_BD_ADDR_t Local_Resolvable_Address;
 
-                     if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type == QAPI_BLE_LAT_PUBLIC_IDENTITY_E)
-                        Peer_Identity_Address_Type = 0x00;
-                     else if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type == QAPI_BLE_LAT_RANDOM_IDENTITY_E)
-                        Peer_Identity_Address_Type = 0x01;
-                     else
-                        Peer_Identity_Address_Type = 0x02;
+                        if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type == QAPI_BLE_LAT_PUBLIC_IDENTITY_E)
+                            Peer_Identity_Address_Type = 0x00;
+                        else if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type == QAPI_BLE_LAT_RANDOM_IDENTITY_E)
+                            Peer_Identity_Address_Type = 0x01;
+                        else
+                            Peer_Identity_Address_Type = 0x02;
 
-                     if(Peer_Identity_Address_Type != 0x02)
-                     {
-                        Peer_Identity_Address = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address;
-
-                        if(!qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(BluetoothStackID, Peer_Identity_Address_Type, Peer_Identity_Address, &StatusResult, &Local_Resolvable_Address))
+                        if(Peer_Identity_Address_Type != 0x02)
                         {
-                           QCLI_Printf(ble_group, "   qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(): 0x%02X.\n", StatusResult);
-                           if(!StatusResult)
-                           {
-                              BD_ADDRToStr(Local_Resolvable_Address, BoardStr);
-                              QCLI_Printf(ble_group, "   Local RPA:           %s.\n", BoardStr);
-                           }
-                        }
-                     }
+                            Peer_Identity_Address = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address;
 
-               
-                  }
-               }
+                            if(!qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(BluetoothStackID, Peer_Identity_Address_Type, Peer_Identity_Address, &StatusResult, &Local_Resolvable_Address))
+                            {
+                                QCLI_Printf(ble_group, "   qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(): 0x%02X.\n", StatusResult);
+                                if(!StatusResult)
+                                {
+                                    BD_ADDRToStr(Local_Resolvable_Address, BoardStr);
+                                    QCLI_Printf(ble_group, "   Local RPA:           %s.\n", BoardStr);
+                                }
+                            }
+                        }
+
+
+                    }
+
+                    memcpy(&Current_Conn_Addr,&(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address),sizeof(qapi_BLE_BD_ADDR_t));
+                    /*Initiate Pairing */
+                    QCLI_Printf(ble_group, "Device is master initiating the pairing request \n" );
+                    if(!SendPairingRequest(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, TRUE))
+                        QCLI_Printf(ble_group, "pairing request sent successfully \n" );
+                    else                                                  
+                        QCLI_Printf(ble_group, "Failed to send the pairing request \n" );
+
+                    qapi_BLE_BSC_StopTimer(BluetoothStackID, ConnTimerID);
+                    QCLI_Printf(ble_group, "Connection timer stopped \n" );
+                    //BulbState = BULB_STATE_CONNECTED;
+
+                    blbd_scan_permitted = 0;
+                    state_flags &= ~SCAN_PERMITTED;
+                    BulbState =  BULB_STATE_ON;
+                }
             }
 
-            blbd_scan_permitted = 0;
-	    memcpy(&Current_Conn_Addr,&(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address),sizeof(qapi_BLE_BD_ADDR_t));
-	         /*Initiate Pairing */
-		QCLI_Printf(ble_group, "Device is master initiating the pairing request \n" );
-               if(!SendPairingRequest(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, TRUE))
-                   QCLI_Printf(ble_group, "pairing request sent successfully \n" );
-               else                                                  
-                    QCLI_Printf(ble_group, "Failed to send the pairing request \n" );
             break;
+
          case QAPI_BLE_ET_LE_DISCONNECTION_COMPLETE_E:
             QCLI_Printf(ble_group, "etLE_Disconnection_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
             
@@ -4589,9 +4314,10 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                SendInfo.BytesToSend = 0;
                SendInfo.BytesSent   = 0;
             }
-            blbd_scan_permitted = 1;
-	     BulbState = BULB_STATE_DISCONNECTED;
-	    memset(&Current_Conn_Addr,0,sizeof(qapi_BLE_BD_ADDR_t));
+                blbd_scan_permitted = 1;
+                state_flags = state_flags | SCAN_PERMITTED;
+	        BulbState = BULB_STATE_DISCONNECTED;
+	        memset(&Current_Conn_Addr,0,sizeof(qapi_BLE_BD_ADDR_t));
             break;
          case QAPI_BLE_ET_LE_CONNECTION_PARAMETER_UPDATE_REQUEST_E:
             QCLI_Printf(ble_group, "etLE_Connection_Parameter_Update_Request with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
@@ -5116,6 +4842,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                            /* Clear the flag indicating the LTK is      */
                            /* valid.                                    */
                            DeviceInfo->Flags &= ~DEVICE_INFO_FLAGS_LTK_VALID;
+                            LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                         }
                      }
 
@@ -5125,14 +4852,39 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      QAPI_BLE_ASSIGN_BD_ADDR(BLBD_SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
                      break;
                   case QAPI_BLE_LAT_PAIRING_STATUS_E:
-                     QCLI_Printf(ble_group, "Pairing Status: %s.\n", BoardStr);
+			
+			QCLI_Printf(ble_group, "Pairing Status: %s.\n", BoardStr);
                      QCLI_Printf(ble_group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
 
                      if(Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status == QAPI_BLE_GAP_LE_PAIRING_STATUS_NO_ERROR)
                      {
                         QCLI_Printf(ble_group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
-		            
-                        DiscoverBLBDServices(Authentication_Event_Data->BD_ADDR);/* perform service discovery */
+			
+			        if ((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Authentication_Event_Data->BD_ADDR)) != NULL) {
+		                    DeviceInfo -> device_type = DEVICE_TYPE_BULB;
+                            
+				            if ((DeviceInfo_persistlist = SearchDeviceInfoEntryByType(&PersistDeviceInfoList,DEVICE_TYPE_BULB)) != NULL) { 
+                                   memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+                            }else{
+
+					            if((DeviceInfo_persistlist = CreateNewDeviceInfoEntry(&PersistDeviceInfoList, Authentication_Event_Data->BD_ADDR )) != NULL)                    
+                                {
+											
+					                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+                                	QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+
+			                   }
+			
+                        }
+
+			}
+
+
+				
+			status = StorePersistentData();
+			QCLI_Printf(ble_group, "status of persistent storage after the bulb connection :%d\n",status);
+                        
+			DiscoverBLBDServices(Authentication_Event_Data->BD_ADDR);/* perform service discovery */
 			//blbd_discover_services()
                     //blbd_connection_result_callback();
                      }
@@ -5151,6 +4903,57 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      /* device.                                         */
                      QAPI_BLE_ASSIGN_BD_ADDR(BLBD_SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
 
+
+
+#if 0
+                     QCLI_Printf(ble_group, "Pairing Status: %s.\n", BoardStr);
+                     QCLI_Printf(ble_group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
+
+                     if(Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status == QAPI_BLE_GAP_LE_PAIRING_STATUS_NO_ERROR)
+                     {
+                        QCLI_Printf(ble_group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
+		            
+                        if ((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Authentication_Event_Data->BD_ADDR)) != NULL) { 
+                             DeviceInfo -> device_type = DEVICE_TYPE_BULB;                           
+                             
+                                if ((DeviceInfo = SearchDeviceInfoEntryByType(&PersistDeviceInfoList,DEVICE_TYPE_BULB)) != NULL) { 
+                                   memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t);
+                                 } else {
+                                
+                                if((DeviceInfo_persistlist = CreateNewDeviceInfoEntry(&PersistDeviceInfoList, Authentication_Event_Data->BD_ADDR )) != NULL)                      {    
+                         
+                                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t);
+                                QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+                            }
+                        }      
+                    }
+
+                } 
+                        //Search Original List for this  address Authentication_Event_Data->BD_ADDR
+                        //Search persist list for existing bulb info using device type 
+                        // 1: If any bulb device type foudn in persit list, overwrite
+                        // else : Create New entry in persist list, add flag for device type  DeviceInfo = CreateNewDeviceInfoEntry(
+			            //blbd_discover_services()
+                        DiscoverBLBDServices(Authentication_Event_Data->BD_ADDR);/* perform service discovery */
+                  
+                     }
+                     else
+                     {
+                        /* Disconnect the Link.                         */
+                        /* * NOTE * Since we failed to pair, the remote */
+                        /*          device information will be deleted  */
+                        /*          when the GATT Disconnection event is*/
+                        /*          received.                           */
+                        qapi_BLE_GAP_LE_Disconnect(BluetoothStackID, Authentication_Event_Data->BD_ADDR);
+                     }
+
+                     /* Flag the we are no longer                       */
+                     /* pairing/re-establishing security with a remote  */
+                     /* device.                                         */
+                    
+                     QAPI_BLE_ASSIGN_BD_ADDR(BLBD_SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
+
+#endif
                      break;
                   case QAPI_BLE_LAT_ENCRYPTION_INFORMATION_REQUEST_E:
                      QCLI_Printf(ble_group, "Encryption Information Request %s.\n", BoardStr);
@@ -5198,12 +5001,14 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         memcpy(&(DeviceInfo->Rand), &(Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Rand), sizeof(DeviceInfo->Rand));
                         DeviceInfo->EncryptionKeySize = Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Encryption_Key_Size;
                         DeviceInfo->Flags            |= DEVICE_INFO_FLAGS_LTK_VALID;
+                        LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                      }
                      else
                      {
                         QCLI_Printf(ble_group, "No Key Info Entry for this device.\n");
                      }
                      break;
+
                   case QAPI_BLE_LAT_IDENTITY_INFORMATION_E:
                      /* Display the information from the event.         */
                      QCLI_Printf(ble_group, " Identity Information from RemoteDevice: %s.\n", BoardStr);
@@ -5288,26 +5093,56 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 int Initialize_Home_Automation(void)
 {
 
+    uint32_t ConnectionTimeout = 15 ; /* wait for 15 sec after the connect request is sent */
+    DeviceInfo_t *bulb_device;
     QCLI_Command_Status_t status;
-   ble_group = QCLI_Register_Command_Group(NULL, &ble_cmd_group);
+    ble_group = QCLI_Register_Command_Group(NULL, &ble_cmd_group);
     if (InitializeBluetooth() != QCLI_STATUS_SUCCESS_E)
     {
         LOG_ERROR("BLE: Error InitializeBluetooth()\n");
         return -1;
     }
 
-    status = LoadPersistentData();
-    QCLI_Printf(ble_group, "status of loading the persistent data : %0x\n",status);
+    QCLI_Printf(ble_group, "Before loadin\n\n");
+    status = LoadPersistentData(&DeviceInfoList);
+    QCLI_Printf(ble_group, "status of loading the persistent data of deviceinfo list : %0x\n",status);
+    status = LoadPersistentData(&PersistDeviceInfoList);
+    QCLI_Printf(ble_group, "status of loading the persistent data of persistdevice info list : %0x\n",status);
 
-     if (AdvertiseLE(1) != QCLI_STATUS_SUCCESS_E)
+    if (AdvertiseLE(1) != QCLI_STATUS_SUCCESS_E)
     {
         LOG_ERROR("BLE: error AdvertiseLE()\n");
         return -1;
     }
-        LOG_ERROR("BLE: AdveiseLE() enabled\n");
-    /*STart Central thread */
-    smoke_sensor_init();
+    LOG_ERROR("BLE: AdveiseLE() enabled\n");
+    /*Start Central thread */
+
+    /*Check for seg fault in*/
+    //    adc_test(NULL,NULL);
+    //smoke_sensor_init();
     BLE_timer_init();
+
+    Sleep(1000);
+
+
+    QCLI_Printf(ble_group, "searching the bulb device\n\n");
+    if((bulb_device = SearchDeviceInfoEntryByType(&DeviceInfoList,DEVICE_TYPE_BULB)) != NULL) {
+        ConnectLEDevice(BluetoothStackID, FALSE, &(bulb_device->RemoteAddress), bulb_device->RemoteAddressType);
+
+        QCLI_Printf(ble_group, "Device entry found , sending the connet request\n");
+
+        //  state_flags = state_flags | SCAN_PERMITTED; 
+        ConnTimerID = qapi_BLE_BSC_StartTimer(BluetoothStackID, (ConnectionTimeout * 1000) , Conn_Timer_Callback, ConnectionTimeout);
+        if(!ConnTimerID)
+            QCLI_Printf(ble_group, "Failed to start the connection timer\n");
+        else
+            QCLI_Printf(ble_group, "Connection timer started successfully\n");
+    }else
+        QCLI_Printf(ble_group, "Initially bulb device not found in the persist list\n");
+    while (SMOKE_SENSOR_ENABLED) {
+        adc_test1(&SmokeDetectorValue);
+        Sleep(1000);
+    }
     LOG_ERROR("Done\n\n\n\n\n");
     return QCLI_STATUS_SUCCESS_E;
 }

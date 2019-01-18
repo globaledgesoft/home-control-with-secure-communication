@@ -65,13 +65,13 @@ void Initialize_ADC_Demo(void)
 
 // HOME AUTOMATION Start
 
-uint32_t home_automation_adc(uint32_t Parameter_Count, QCLI_Parameter_t *Parameter_List)
+uint16_t home_automation_adc(uint32_t Parameter_Count, QCLI_Parameter_t *Parameter_List)
 {
     uint32_t i = 7;
     int32_t  adc_driver_test( void *pvParameters );
     qapi_ADC_Read_Result_t *result;
     int32_t  status;
-    int32_t value ;
+    int16_t value ;
     status = adc_driver_test(Parameter_List);
     if (status != 0)
     {
@@ -90,6 +90,42 @@ uint32_t home_automation_adc(uint32_t Parameter_Count, QCLI_Parameter_t *Paramet
                               */
     return value;
 }
+
+uint16_t adc_test1(uint16_t *smoke_data)
+{ 
+    uint32_t i;
+    int32_t  adc_driver_test( void *pvParameters );
+    qapi_ADC_Read_Result_t *result;
+    qapi_ADC_Range_t  *range;
+    int32_t  status;
+    // HOME AUTOMATION Start
+   // while(1){
+        status = adc_driver_test(NULL);
+        if (status != 0)
+        {
+            QCLI_Printf(qcli_adc_group, "ADC fails\n");
+            return QCLI_STATUS_ERROR_E;
+        }
+        for (i=0; i < MAX_CHANNELS; i++)
+        {
+            result = &chan_result[i].chan_result;
+            range = &chan_result[i].range;
+            if (i == 7) {  
+#if 0
+            QCLI_Printf(qcli_adc_group, "ADC[%i] = %duV,  %d.%03dmV,  %d.%03dV  Range=[%d.%03dV, %d.%03dV]\n", i, result->microvolts,
+                    result->microvolts/1000, result->microvolts%1000,
+                    result->microvolts/1000000, (result->microvolts%1000000) / 1000,
+                    range->min_uv/1000000, (range->min_uv%1000000)/1000,
+                    range->max_uv/1000000, (range->max_uv%1000000) / 1000);
+#endif
+                *smoke_data = result->microvolts/1000;
+            }
+
+        }
+   // }
+    return QCLI_STATUS_SUCCESS_E;
+}
+
 
 
 QCLI_Command_Status_t adc_test(uint32_t Parameter_Count, QCLI_Parameter_t *Parameter_List)

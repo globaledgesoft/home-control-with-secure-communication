@@ -113,10 +113,9 @@ static void Initialize_Samples(void)
 {
 
     PAL_CONSOLE_WRITE_STRING_LITERAL("Calling Initialize_Home_automation in PAL foldder\n");
-    Initialize_Home_Automation();
 	Initialize_Peripherals_Demo();
     Initialize_Demo();
-
+    Initialize_Home_Automation();
 }
 
 /**
