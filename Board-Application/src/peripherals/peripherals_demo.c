@@ -51,7 +51,7 @@ void Initialize_Peripherals_Demo(void)
 
    if(qcli_peripherals_group != NULL)
    {
-	   Initialize_ADC_Demo();
+       Initialize_ADC_Demo();
 	   Initialize_PWM_Demo();
    }
    else {

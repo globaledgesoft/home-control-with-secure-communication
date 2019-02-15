@@ -51,6 +51,14 @@
 #define BLE_BULB_ATTRIBUTE_OFFSET        8
 #define BLE_BULB_CCD_ATTRIBUTE_OFFSET    9
 
+
+#define PWM_PHASE_HIGH          1
+#define PWM_PHASE_FREQ_HIGH     5000
+#define PWM_PHASE_FREQ_MED_1    2000
+#define PWM_PHASE_FREQ_MED_2    1200
+#define PWM_PHASE_FREQ_LOW      500
+#define PWM_PHASE_VALUE_TRUE    true
+
 #define Sleep(msec)    do { \
                               qurt_time_t qtime;\
                               qtime = qurt_timer_convert_time_to_ticks(msec, QURT_TIME_MSEC);\
@@ -66,26 +74,18 @@
 int BLE_IOService();
 
 /**
- * @func : notify_smoke_data
+ * @func : notify_Smoke_Data
  * @Desc : The following function notifies the smoke data at a specific intervals of time */
 
 
-void notify_smoke_data();
+void notify_Smoke_Data();
 
 /**
- * @func : notify_bulb_state 
+ * @func : notify_Bulb_State
  * @Desc : The following function notifies the bulb state at a specific intervals of time */
 
 
-void notify_bulb_state();
-
-/**
- * @func : smoke_sensor_init
- * @Desc : The following function initializes the smoke senor module */
-
-
-
-void smoke_sensor_init();
+void notify_Bulb_State();
 
 
 enum BULB_STATES {

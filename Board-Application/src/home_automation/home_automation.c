@@ -43,18 +43,17 @@
 
 
 /*NEW: */
-extern uint16_t SmokeDetectorValue;
+extern uint16_t smoke_Detector_Value;
 
 
+QCLI_Group_Handle_t ble_Group;
 
-QCLI_Group_Handle_t ble_group;
+#define LOG_ERROR(...)                    QCLI_Printf(ble_Group, __VA_ARGS__)
+#define LOG_WARN(...)                     QCLI_Printf(ble_Group, __VA_ARGS__)
+#define LOG_INFO(...)                     QCLI_Printf(ble_Group, __VA_ARGS__)
+#define LOG_VERBOSE(...)                  QCLI_Printf(ble_Group, __VA_ARGS__)
 
-#define LOG_ERROR(...)                    QCLI_Printf(ble_group, __VA_ARGS__)
-#define LOG_WARN(...)                     QCLI_Printf(ble_group, __VA_ARGS__)
-#define LOG_INFO(...)                     QCLI_Printf(ble_group, __VA_ARGS__)
-#define LOG_VERBOSE(...)                  QCLI_Printf(ble_group, __VA_ARGS__)
-
-extern uint16_t BulbState;
+extern uint16_t bulb_State;
 
 BLBD_Q_t *blbd_qdata;
 
@@ -70,7 +69,7 @@ qapi_BLE_BD_ADDR_t Current_Conn_Addr = {0};
 /* declared static are initialized to 0 automatically by the         */
 /* compiler as part of standard C/C++).                              */
 
-QCLI_Group_Handle_t ble_group;               /* Handle for our main QCLI Command Group. */
+QCLI_Group_Handle_t ble_Group;               /* Handle for our main QCLI Command Group. */
 
 static DeviceInfo_t *CreateNewDeviceInfoEntry(DeviceInfo_t **ListHead, qapi_BLE_BD_ADDR_t RemoteAddress);
 
@@ -320,8 +319,8 @@ static unsigned int        MaxACLPacketSize;
 static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Event_Data_t *GAP_LE_Event_Data, uint32_t CallbackParameter);
 
 static QCLI_Command_Status_t StorePersistentData(void);
-//static QCLI_Command_Status_t StorePersistentData(DeviceInfo_t *DeviceInfo);
-static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist);
+//static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist);
+static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist,qapi_BLE_BD_ADDR_t *BulbAddress , qapi_BLE_GAP_LE_Address_Type_t *type);
 
 static void QAPI_BLE_BTPSAPI GATT_BLBD_Service_Discovery_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GATT_Service_Discovery_Event_Data_t *GATT_Service_Discovery_Event_Data, uint32_t CallbackParameter);
 
@@ -333,7 +332,7 @@ static DeviceInfo_t *SearchDeviceInfoEntryByBD_ADDR(DeviceInfo_t **ListHead, qap
 
 
 static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo, 
-   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData);
+   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData, DeviceInfo_t *DeviceInfo);
 
 
 
@@ -381,13 +380,14 @@ static QCLI_Command_Status_t StorePersistentData(void)
 {
     uint8_t                NumberDevices;
     uint8_t                Index;
-    DeviceInfo_t          *DeviceInfo;
+    DeviceInfo_t          *DeviceInfo ;
     qapi_Status_t          Result;
     PersistentData_t      *PersistentData;
     QCLI_Command_Status_t  ret_val;
 
 
-    QCLI_Printf(ble_group, "In StorePersistentData\n");
+    QCLI_Printf(ble_Group, "Persist handle : %p\n" , PersistHandle);
+    QCLI_Printf(ble_Group, "In StorePersistentData\n");
 
     /* First, check that valid Bluetooth Stack ID exists.                */
     if(BluetoothStackID)
@@ -407,53 +407,70 @@ static QCLI_Command_Status_t StorePersistentData(void)
                     DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
                 }
 
-                QCLI_Printf(ble_group, "Number of devices %d\n", NumberDevices);
+                QCLI_Printf(ble_Group, "Number of devices %d\n", NumberDevices);
 
-                if((PersistentData = (PersistentData_t *)malloc(PERSISTENT_DATA_SIZE(NumberDevices))) != NULL)
+                //if((PersistentData = (PersistentData_t *)malloc(PERSISTENT_DATA_SIZE(1))) != NULL)
+                if((PersistentData = (PersistentData_t *)malloc(sizeof(PersistentData_t))) != NULL)
                 {
-                    memset(PersistentData, 0, PERSISTENT_DATA_SIZE(NumberDevices));
+
+                    QCLI_Printf(ble_Group, "Persist handle : %p\n" , PersistHandle);
+                    QCLI_Printf(ble_Group, "In store persistent data, during memory allocation\n ");
+                    //memset(PersistentData, 0, PERSISTENT_DATA_SIZE(NumberDevices));
+                    memset(PersistentData, 0, sizeof(PersistentData_t));
 
                     PersistentData->LocalAddress        = LocalBD_ADDR;
-                    PersistentData->NumberRemoteDevices = NumberDevices;
+                    PersistentData->NumberRemoteDevices = 1;
 
                     DeviceInfo = PersistDeviceInfoList;
                     Index      = 0;
 
                     while(DeviceInfo)
                     {
-                        PersistentData->RemoteDevices[Index].LastAddress     = DeviceInfo->RemoteAddress;
-                        PersistentData->RemoteDevices[Index].LastAddressType = DeviceInfo->RemoteAddressType;
-                        PersistentData->RemoteDevices[Index].device_type =     DeviceInfo->device_type;
-                        if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
-                        {
-                            PersistentData->RemoteDevices[Index].Flags             |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID;
-                            PersistentData->RemoteDevices[Index].EncryptionKeySize  = DeviceInfo->EncryptionKeySize;
-                            PersistentData->RemoteDevices[Index].LTK                = DeviceInfo->LTK;
-                        }
+                        QCLI_Printf(ble_Group, "Persist handle : %p\n" , PersistHandle);
+                        QCLI_Printf(ble_Group, "Devices are present in the persist info list\n ");
+                        if (DeviceInfo->device_type == DEVICE_TYPE_BULB) {
+                            PersistentData->BulbFlag = 1;
+                            memcpy(&PersistentData->BulbAddress,&DeviceInfo->RemoteAddress,sizeof(qapi_BLE_BD_ADDR_t));
+                            PersistentData->BulbAddressType = DeviceInfo->RemoteAddressType;
+                        } else { 
+                            PersistentData->RemoteDevices.LastAddress     = DeviceInfo->RemoteAddress;
+                            PersistentData->RemoteDevices.LastAddressType = DeviceInfo->RemoteAddressType;
+                            PersistentData->RemoteDevices.device_type =     DeviceInfo->device_type;
+                            if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
+                            {
+                                PersistentData->RemoteDevices.Flags             |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID;
+                                PersistentData->RemoteDevices.EncryptionKeySize  = DeviceInfo->EncryptionKeySize;
+                                PersistentData->RemoteDevices.LTK                = DeviceInfo->LTK;
+                            }
 
-                        if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_IRK_VALID)
-                        {
-                            PersistentData->RemoteDevices[Index].Flags               |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID;
-                            PersistentData->RemoteDevices[Index].IdentityAddress      = DeviceInfo->IdentityAddressBD_ADDR;
-                            PersistentData->RemoteDevices[Index].IdentityAddressType  = DeviceInfo->IdentityAddressType;
-                            PersistentData->RemoteDevices[Index].IRK                  = DeviceInfo->IRK;
-                        }
+                            if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_IRK_VALID)
+                            {
+                                PersistentData->RemoteDevices.Flags               |= PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID;
+                                PersistentData->RemoteDevices.IdentityAddress      = DeviceInfo->IdentityAddressBD_ADDR;
+                                PersistentData->RemoteDevices.IdentityAddressType  = DeviceInfo->IdentityAddressType;
+                                PersistentData->RemoteDevices.IRK                  = DeviceInfo->IRK;
+                            }
 
-                        ++Index;
+                        }
                         DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
+                        QCLI_Printf(ble_Group, "Hanged inside the loop \n");
                     }
 
-                    Result = qapi_Persist_Put(PersistHandle, PERSISTENT_DATA_SIZE(NumberDevices), (uint8_t *)PersistentData);
+                    QCLI_Printf(ble_Group, "before put*******************************");
+                    QCLI_Printf(ble_Group, "Persist handle : %p\n" , PersistHandle);
+                    Result = qapi_Persist_Put(PersistHandle, sizeof(PersistentData_t), (uint8_t *)PersistentData);
 
+                    QCLI_Printf(ble_Group, "After put*******************************");
+                    QCLI_Printf(ble_Group, "Persist handle : %p\n" , PersistHandle);
                     if(Result == QAPI_OK)
                     {
-                        QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Success.\n");
+                        QCLI_Printf(ble_Group, "qapi_Persist_Put_Data() Success.\n");
 
                         ret_val = QCLI_STATUS_SUCCESS_E;
                     }
                     else
                     {
-                        QCLI_Printf(ble_group, "qapi_Persist_Put_Data() Failure: %d.\n", Result);
+                        QCLI_Printf(ble_Group, "qapi_Persist_Put_Data() Failure: %d.\n", Result);
 
                         ret_val = QCLI_STATUS_ERROR_E;
                     }
@@ -462,7 +479,7 @@ static QCLI_Command_Status_t StorePersistentData(void)
                 }
                 else
                 {
-                    QCLI_Printf(ble_group, "Unable to allocate memory\n");
+                    QCLI_Printf(ble_Group, "Unable to allocate memory\n");
 
                     ret_val = QCLI_STATUS_ERROR_E;
                 }
@@ -471,14 +488,14 @@ static QCLI_Command_Status_t StorePersistentData(void)
             }
             else
             {
-                QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+                QCLI_Printf(ble_Group, "Unable to acquire Bluetooth Stack Lock.\n");
 
                 ret_val = QCLI_STATUS_ERROR_E;
             }
         }
         else
         {
-            QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
+            QCLI_Printf(ble_Group, "Persistent Storage Not Initialized\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
         }
@@ -533,7 +550,7 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
 
                 if(Result == QAPI_OK)
                 {
-                    QCLI_Printf(ble_group, "qapi_Persist_Get() Success. Number devices: %u\n", PersistentData->NumberRemoteDevices);
+                    QCLI_Printf(ble_Group, "qapi_Persist_Get() Success. Number devices: %u\n", PersistentData->NumberRemoteDevices);
                     /* Verify the data and length seem valid.             */
                     if((PersistentData) && (DataSize >= PERSISTENT_DATA_SIZE(0)) && (DataSize >= PERSISTENT_DATA_SIZE(PersistentData->NumberRemoteDevices)))
                     {
@@ -546,7 +563,7 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                             /* specified "force").                          */
                             if(DeviceInfoList)
                             {
-                                QCLI_Printf(ble_group, "Warning: Device List is not empty. It will be cleared.\n");
+                                QCLI_Printf(ble_Group, "Warning: Device List is not empty. It will be cleared.\n");
                                 FreeDeviceInfoList(&DeviceInfoList);
                                 DeviceInfoList = NULL;
                             }
@@ -591,11 +608,11 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                                 }
                                 else
                                 {
-                                    QCLI_Printf(ble_group, "Failed to create device entry\n");
+                                    QCLI_Printf(ble_Group, "Failed to create device entry\n");
                                 }
                             }
 
-                            QCLI_Printf(ble_group, "Persistent data loaded\n");
+                            QCLI_Printf(ble_Group, "Persistent data loaded\n");
 
                             ret_val = QCLI_STATUS_SUCCESS_E;
 
@@ -604,14 +621,14 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                     }
                     else
                     {
-                        QCLI_Printf(ble_group, "Local BD_ADDR does not match persistent data. The persistent data is invalid.\n");
+                        QCLI_Printf(ble_Group, "Local BD_ADDR does not match persistent data. The persistent data is invalid.\n");
 
                         ret_val = QCLI_STATUS_ERROR_E;
                     }
                 }
                 else
                 {
-                    QCLI_Printf(ble_group, "Persistent data is invalid\n");
+                    QCLI_Printf(ble_Group, "Persistent data is invalid\n");
 
                     ret_val = QCLI_STATUS_ERROR_E;
                 }
@@ -620,14 +637,14 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
             }
             else
             {
-                QCLI_Printf(ble_group, "qapi_Persist_Get() Failure: %d\n", Result);
+                QCLI_Printf(ble_Group, "qapi_Persist_Get() Failure: %d\n", Result);
 
                 ret_val = QCLI_STATUS_ERROR_E;
             }
             //  }
             /* else
                {
-               QCLI_Printf(ble_group, "Device List is not empty.\n");
+               QCLI_Printf(ble_Group, "Device List is not empty.\n");
 
                ret_val = QCLI_STATUS_ERROR_E;
                }*/
@@ -637,13 +654,13 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
 
         else
         {
-            QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+            QCLI_Printf(ble_Group, "Unable to acquire Bluetooth Stack Lock.\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
         }
         else
         {
-            QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
+            QCLI_Printf(ble_Group, "Persistent Storage Not Initialized\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
         }
@@ -657,7 +674,7 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
 #endif  /*Waste*/
 
 
-static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
+static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist,qapi_BLE_BD_ADDR_t *BulbAddress , qapi_BLE_GAP_LE_Address_Type_t *type)
 {
    uint8_t                Index;
    uint32_t               DataSize;
@@ -684,7 +701,7 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
 
                if(Result == QAPI_OK)
                {
-                  QCLI_Printf(ble_group, "qapi_Persist_Get() Success. Number devices: %u\n", PersistentData->NumberRemoteDevices);
+                  QCLI_Printf(ble_Group, "qapi_Persist_Get() Success. Number devices: %u\n", PersistentData->NumberRemoteDevices);
                   /* Verify the data and length seem valid.             */
                   if((PersistentData) && (DataSize >= PERSISTENT_DATA_SIZE(0)) && (DataSize >= PERSISTENT_DATA_SIZE(PersistentData->NumberRemoteDevices)))
                   {
@@ -695,40 +712,44 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                         /* specified "force").                          */
                         if(DeviceInfoList)
                         {
-                           QCLI_Printf(ble_group, "Warning: Device List is not empty. It will be cleared.\n");
+                           QCLI_Printf(ble_Group, "Warning: Device List is not empty. It will be cleared.\n");
                            FreeDeviceInfoList(&DeviceInfoList);
                            DeviceInfoList = NULL;
                         }
-
+                        if(PersistentData->BulbFlag == 1) {
+                            memcpy(BulbAddress, &(PersistentData->BulbAddress),sizeof(qapi_BLE_BD_ADDR_t));
+                            memcpy(type, &(PersistentData->BulbAddressType),   sizeof(qapi_BLE_GAP_LE_Address_Type_t));
+                        } 
                         /* Data all seems valid, so build the device    */
                         /* list.                                        */
-                        for(Index=0;Index<PersistentData->NumberRemoteDevices;Index++)
-                        {
+                       
+                      //  for(Index=0;Index<PersistentData->NumberRemoteDevices;Index++)
+                       // {
                            /* Attempt to create a new list entry for the*/
                            /* device.                                   */
-                           if((DeviceInfo = CreateNewDeviceInfoEntry(&DeviceInfoList, PersistentData->RemoteDevices[Index].LastAddress)) != NULL)
+                           if((DeviceInfo = CreateNewDeviceInfoEntry(&DeviceInfoList, PersistentData->RemoteDevices.LastAddress)) != NULL)
                            {
                               /* Note the address type of the address   */
                               /* used to create the entry.              */
-                              DeviceInfo->RemoteAddressType = PersistentData->RemoteDevices[Index].LastAddressType;
-                              DeviceInfo->device_type        = PersistentData->RemoteDevices[Index].device_type; 
+                              DeviceInfo->RemoteAddressType = PersistentData->RemoteDevices.LastAddressType;
+                              DeviceInfo->device_type        = PersistentData->RemoteDevices.device_type; 
 
                               /* Note any encryption information if     */
                               /* valid.                                 */
-                              if(PersistentData->RemoteDevices[Index].Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID)
+                              if(PersistentData->RemoteDevices.Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_LTK_VALID)
                               {
                                  DeviceInfo->Flags             |= DEVICE_INFO_FLAGS_LTK_VALID;
-                                 DeviceInfo->EncryptionKeySize  = PersistentData->RemoteDevices[Index].EncryptionKeySize;
-                                 DeviceInfo->LTK                = PersistentData->RemoteDevices[Index].LTK;
+                                 DeviceInfo->EncryptionKeySize  = PersistentData->RemoteDevices.EncryptionKeySize;
+                                 DeviceInfo->LTK                = PersistentData->RemoteDevices.LTK;
                               }
 
                               /* Note any identity information if valid.*/
-                              if(PersistentData->RemoteDevices[Index].Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID)
+                              if(PersistentData->RemoteDevices.Flags & PERSISTENT_REMOTE_DEVICE_DATA_FLAG_IDENTITY_VALID)
                               {
                                  DeviceInfo->Flags                  |= DEVICE_INFO_FLAGS_IRK_VALID;
-                                 DeviceInfo->IdentityAddressBD_ADDR  = PersistentData->RemoteDevices[Index].IdentityAddress;
-                                 DeviceInfo->IdentityAddressType     = PersistentData->RemoteDevices[Index].IdentityAddressType;
-                                 DeviceInfo->IRK                     = PersistentData->RemoteDevices[Index].IRK;
+                                 DeviceInfo->IdentityAddressBD_ADDR  = PersistentData->RemoteDevices.IdentityAddress;
+                                 DeviceInfo->IdentityAddressType     = PersistentData->RemoteDevices.IdentityAddressType;
+                                 DeviceInfo->IRK                     = PersistentData->RemoteDevices.IRK;
 
                                  /* We also need to set up the resolving*/
                                  /* list entry, since this is done in   */
@@ -741,24 +762,24 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                            }
                            else
                            {
-                              QCLI_Printf(ble_group, "Failed to create device entry\n");
+                              QCLI_Printf(ble_Group, "Failed to create device entry\n");
                            }
-                        }
+                       // }
 
-                        QCLI_Printf(ble_group, "Persistent data loaded\n");
+                        QCLI_Printf(ble_Group, "Persistent data loaded\n");
 
                         ret_val = QCLI_STATUS_SUCCESS_E;
                      }
                      else
                      {
-                        QCLI_Printf(ble_group, "Local BD_ADDR does not match persistent data. The persistent data is invalid.\n");
+                        QCLI_Printf(ble_Group, "Local BD_ADDR does not match persistent data. The persistent data is invalid.\n");
 
                         ret_val = QCLI_STATUS_ERROR_E;
                      }
                   }
                   else
                   {
-                     QCLI_Printf(ble_group, "Persistent data is invalid\n");
+                     QCLI_Printf(ble_Group, "Persistent data is invalid\n");
 
                      ret_val = QCLI_STATUS_ERROR_E;
                   }
@@ -767,14 +788,14 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
                }
                else
                {
-                  QCLI_Printf(ble_group, "qapi_Persist_Get() Failure: %d\n", Result);
+                  QCLI_Printf(ble_Group, "qapi_Persist_Get() Failure: %d\n", Result);
 
                   ret_val = QCLI_STATUS_ERROR_E;
                }
           //  }
            /* else
             {
-               QCLI_Printf(ble_group, "Device List is not empty.\n");
+               QCLI_Printf(ble_Group, "Device List is not empty.\n");
 
                ret_val = QCLI_STATUS_ERROR_E;
             }*/
@@ -783,14 +804,14 @@ static QCLI_Command_Status_t LoadPersistentData(DeviceInfo_t **Headlist)
          }
          else
          {
-            QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+            QCLI_Printf(ble_Group, "Unable to acquire Bluetooth Stack Lock.\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
          }
       }
       else
       {
-         QCLI_Printf(ble_group, "Persistent Storage Not Initialized\n");
+         QCLI_Printf(ble_Group, "Persistent Storage Not Initialized\n");
 
          ret_val = QCLI_STATUS_ERROR_E;
       }
@@ -869,7 +890,7 @@ static DeviceInfo_t *SearchDeviceInfoEntryByBD_ADDR(DeviceInfo_t **ListHead, qap
 static DeviceInfo_t *SearchDeviceInfoEntryByType(DeviceInfo_t **ListHead, uint8_t type)
 {
    
-    QCLI_Printf(ble_group, "In SearchDeviceInfoEntryByType\n");
+    QCLI_Printf(ble_Group, "In SearchDeviceInfoEntryByType\n");
     DeviceInfo_t *DeviceInfo;
 
     if (ListHead)
@@ -935,8 +956,9 @@ static DeviceInfo_t *CreateNewDeviceInfoEntry(DeviceInfo_t **ListHead, qapi_BLE_
         if ((ret_val = malloc(sizeof(DeviceInfo_t))) != NULL)
         {
             memset(ret_val, 0, sizeof(DeviceInfo_t));
+            memcpy(&ret_val->RemoteAddress,&RemoteAddress,sizeof(qapi_BLE_BD_ADDR_t));
 
-            ret_val->RemoteAddress = RemoteAddress;
+//            ret_val->RemoteAddress = RemoteAddress;
 
             Result = qapi_BLE_BSC_AddGenericListEntry_Actual(QAPI_BLE_EK_BD_ADDR_T_E, QAPI_BLE_BTPS_STRUCTURE_OFFSET(DeviceInfo_t, RemoteAddress), QAPI_BLE_BTPS_STRUCTURE_OFFSET(DeviceInfo_t, NextDeviceInfoInfoPtr), (void **)(ListHead), (void *)(ret_val));
             if (!Result)
@@ -1093,7 +1115,7 @@ static void QAPI_BLE_BTPSAPI GATT_ClientEventCallback_GAPS(uint32_t BluetoothSta
  *         This function is called for GATT Connection Events that occur on
  *         the specified Bluetooth Stack.
  */
-extern volatile uint32_t notify_thread_flag;
+extern volatile uint32_t notify_Thread_Flag;
 
 static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GATT_Connection_Event_Data_t *GATT_Connection_Event_Data, uint32_t CallbackParameter)
 {
@@ -1172,7 +1194,9 @@ static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothSt
                         }
                         else
                         {
-                            if ((DeviceInfo = DeleteDeviceInfoEntry(&DeviceInfoList, SelectedRemoteBD_ADDR)) != NULL)
+                            LOG_VERBOSE("\nDelete device infor entry\n");
+                            if ((DeviceInfo = DeleteDeviceInfoEntry(&DeviceInfoList, GATT_Connection_Event_Data->Event_Data.GATT_Device_Disconnection_Data->RemoteDevice)) != NULL)
+                           // if ((DeviceInfo = DeleteDeviceInfoEntry(&DeviceInfoList,SelectedRemoteBD_ADDR )) != NULL)
                             {
                                 LOG_VERBOSE("\nThe remote device information has been deleted.\n", BoardStr);
                                 DeviceInfo = NULL;
@@ -1182,6 +1206,7 @@ static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothSt
 
                     if (ConnectionCount)
                     {
+#if 1 
                         DeviceInfo = DeviceInfoList;
                         while (DeviceInfo)
                         {
@@ -1197,11 +1222,11 @@ static void QAPI_BLE_BTPSAPI GATT_Connection_Event_Callback(uint32_t BluetoothSt
 
                             DeviceInfo = DeviceInfo->NextDeviceInfoInfoPtr;
                         }
+#endif
                     }
                 }
                 else
                     LOG_ERROR("Error - Null Disconnection Data.\n");
-                LOG_VERBOSE("flag %02x\n",DeviceInfo->Flags);
                 break;
             case QAPI_BLE_ET_GATT_CONNECTION_SERVER_NOTIFICATION_E:
                 if (GATT_Connection_Event_Data->Event_Data.GATT_Server_Notification_Data)
@@ -2310,7 +2335,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                 break;
             case QAPI_BLE_ET_LE_DISCONNECTION_COMPLETE_E:
                 LOG_INFO("etLE_Disconnection_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
-                notify_thread_flag = 0;
+                notify_Thread_Flag = 0;
                 if(GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data)
                 {
                     LOG_VERBOSE("   Status: 0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Status);
@@ -2375,13 +2400,13 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
             case QAPI_BLE_ET_LE_ENCRYPTION_CHANGE_E:
                 LOG_VERBOSE("etLE_Encryption_Change with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
                     if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data->BD_ADDR)) != NULL) { 
-                        QCLI_Printf(ble_group, "flags %02x\n", DeviceInfo->Flags); 
+                        QCLI_Printf(ble_Group, "flags %02x\n", DeviceInfo->Flags);
                         DeviceInfo->Flags = DeviceInfo->Flags | DEVICE_INFO_FLAGS_ENCRYPTED;
-                        QCLI_Printf(ble_group, "flags %02x\n", DeviceInfo->Flags); 
+                        QCLI_Printf(ble_Group, "flags %02x\n", DeviceInfo->Flags);
                         
                         if((GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data) != NULL) { 
                             BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Encryption_Change_Event_Data->BD_ADDR, BoardStr);     
-                            QCLI_Printf(ble_group, "      BD_ADDR: %s. \n", BoardStr); 
+                            QCLI_Printf(ble_Group, "      BD_ADDR: %s. \n", BoardStr);
                         }
                     }
                     break;
@@ -2712,6 +2737,8 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                             QAPI_BLE_ASSIGN_BD_ADDR(SecurityRemoteBD_ADDR, 0, 0, 0, 0, 0, 0);
                             break;
                         case QAPI_BLE_LAT_PAIRING_STATUS_E:
+
+                            LOG_VERBOSE("Pairing Status w.r.t mobile");
                             LOG_VERBOSE("Pairing Status: %s.\n", BoardStr);
                             LOG_VERBOSE("        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
 
@@ -2730,7 +2757,7 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
                                             {
 
                                                 memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
-                                                QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+                                                QCLI_Printf(ble_Group, "Device entry created in the persist info list\n");
 
                                             }
 
@@ -2738,8 +2765,11 @@ static void QAPI_BLE_BTPSAPI GAP_LE_Event_Callback(uint32_t BluetoothStackID, qa
 
                                 }
 
+                                QCLI_Printf(ble_Group," Before : call for store persist data w.r.t mobile ");
                                 status_persistent = StorePersistentData();
-                                QCLI_Printf(ble_group,"status of persistent storage after mobile device conn: %d\n",status_persistent );
+                                
+                                QCLI_Printf(ble_Group," After : call for store persist data w.r.t mobile ");
+                                QCLI_Printf(ble_Group,"status of persistent storage after mobile device conn: %d\n",status_persistent );
 #endif
                             }
                             else
@@ -3250,7 +3280,7 @@ const QCLI_Command_Group_t ble_cmd_group =
 }; 
 
 
-int BT_Stk_Id()                                                                 
+int bt_Stk_Id()
  {                                                                               
      return BluetoothStackID;                                                     
  } 
@@ -3269,26 +3299,33 @@ void BLBDWriteData(uint32_t val)
   if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Current_Conn_Addr)))
       {
 	
+
          if(bulb_char_handle)
          {
+
+            QCLI_Printf(ble_Group, "Found device\n\n");
             if((Result = qapi_BLE_GATT_Write_Without_Response_Request(BluetoothStackID, 
                DeviceInfo->ConnectionID, bulb_char_handle, attr_len,
                &val)) > 0)
             {
-               QCLI_Printf(ble_group, "BLBDWriteData write success = %u", Result);
+               QCLI_Printf(ble_Group, "BLBDWriteData write success = %u", Result);
             }
             else if (Result == QAPI_BLE_GATT_ERROR_INVALID_CONNECTION_ID)
             {
                   
                DisplayFunctionError("qapi_BLE_GATT_Write_Request", Result);
 
+
             }
             else
             {
                DisplayFunctionError("qapi_BLE_GATT_Write_Request", Result);
-               QCLI_Printf(ble_group, "Conn_id = %d", DeviceInfo->ConnectionID);
+               QCLI_Printf(ble_Group, "Conn_id = %d", DeviceInfo->ConnectionID);
             }
          }
+      
+      
+               QCLI_Printf(ble_Group, "coudnt find *********************\n\n");
       }
 
 }
@@ -3301,12 +3338,12 @@ static void DisplayUUID(qapi_BLE_GATT_UUID_t *UUID)
    if(UUID)
    {
       if(UUID->UUID_Type == QAPI_BLE_GU_UUID_16_E)
-         QCLI_Printf(ble_group, "%02X%02X\n", UUID->UUID.UUID_16.UUID_Byte1, UUID->UUID.UUID_16.UUID_Byte0);
+         QCLI_Printf(ble_Group, "%02X%02X\n", UUID->UUID.UUID_16.UUID_Byte1, UUID->UUID.UUID_16.UUID_Byte0);
       else
       {
          if(UUID->UUID_Type == QAPI_BLE_GU_UUID_128_E)
          {
-            QCLI_Printf(ble_group, "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", UUID->UUID.UUID_128.UUID_Byte15, UUID->UUID.UUID_128.UUID_Byte14, UUID->UUID.UUID_128.UUID_Byte13,
+            QCLI_Printf(ble_Group, "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", UUID->UUID.UUID_128.UUID_Byte15, UUID->UUID.UUID_128.UUID_Byte14, UUID->UUID.UUID_128.UUID_Byte13,
                                                                                                     UUID->UUID.UUID_128.UUID_Byte12, UUID->UUID.UUID_128.UUID_Byte11, UUID->UUID.UUID_128.UUID_Byte10,
                                                                                                     UUID->UUID.UUID_128.UUID_Byte9,  UUID->UUID.UUID_128.UUID_Byte8,  UUID->UUID.UUID_128.UUID_Byte7,
                                                                                                     UUID->UUID.UUID_128.UUID_Byte6,  UUID->UUID.UUID_128.UUID_Byte5,  UUID->UUID.UUID_128.UUID_Byte4,
@@ -3367,18 +3404,18 @@ int ConnectLEDevice(uint32_t BluetoothStackID, boolean_t UseWhiteList, qapi_BLE_
       Result = qapi_BLE_GAP_LE_Create_Connection(BluetoothStackID, BLEParameters.ScanParameters.ScanInterval, BLEParameters.ScanParameters.ScanWindow, (UseWhiteList ? QAPI_BLE_FP_WHITE_LIST_E : QAPI_BLE_FP_NO_FILTER_E), AddressType, BD_ADDR, QAPI_BLE_LAT_RESOLVABLE_FALLBACK_PUBLIC_E, &(BLEParameters.ConnectionParameters), BLBD_GAP_LE_Event_Callback, 0);
       if(!Result)
       {
-         QCLI_Printf(ble_group, "Connection Request successful.\n");
-         QCLI_Printf(ble_group, "Scan Parameters:       Window %u, Interval %u.\n", (unsigned int)BLEParameters.ScanParameters.ScanWindow,
+         QCLI_Printf(ble_Group, "Connection Request successful.\n");
+         QCLI_Printf(ble_Group, "Scan Parameters:       Window %u, Interval %u.\n", (unsigned int)BLEParameters.ScanParameters.ScanWindow,
                                                                                      (unsigned int)BLEParameters.ScanParameters.ScanInterval);
-         QCLI_Printf(ble_group, "Connection Parameters: Interval Range %u - %u, Slave Latency %u.\n", (unsigned int)BLEParameters.ConnectionParameters.Connection_Interval_Min,
+         QCLI_Printf(ble_Group, "Connection Parameters: Interval Range %u - %u, Slave Latency %u.\n", (unsigned int)BLEParameters.ConnectionParameters.Connection_Interval_Min,
                                                                                                        (unsigned int)BLEParameters.ConnectionParameters.Connection_Interval_Max,
                                                                                                        (unsigned int)BLEParameters.ConnectionParameters.Slave_Latency);
-         QCLI_Printf(ble_group, "Using White List:      %s.\n", (UseWhiteList ? "Yes" : "No"));
+         QCLI_Printf(ble_Group, "Using White List:      %s.\n", (UseWhiteList ? "Yes" : "No"));
       }
       else
       {
          /* Unable to create connection.                                */
-         QCLI_Printf(ble_group, "Unable to create connection: %d.\n", Result);
+         QCLI_Printf(ble_Group, "Unable to create connection: %d.\n", Result);
       }
    }
    else
@@ -3421,11 +3458,11 @@ char BD_Addr_Blb[16];
 int blbd_start_scan()
 {
    int res;
-    QCLI_Printf(ble_group, "inside blbd_start_scan \n");
+    QCLI_Printf(ble_Group, "inside blbd_start_scan \n");
 
     res = MscStartScan(BluetoothStackID, QAPI_BLE_FP_NO_FILTER_E, 3);
     if(!res)
-    QCLI_Printf(ble_group, "Scan started successfully\n");
+    QCLI_Printf(ble_Group, "Scan started successfully\n");
    
     return res ;
 }
@@ -3452,13 +3489,13 @@ static int StopScan(uint32_t BluetoothStackID)
       Result = qapi_BLE_GAP_LE_Cancel_Scan(BluetoothStackID);
       if(!Result)
       {
-         QCLI_Printf(ble_group, "Scan stopped successfully.\n");
+         QCLI_Printf(ble_Group, "Scan stopped successfully.\n");
 
          /* Flag that scanning is not in progess.                       */
          ScanInProgress = FALSE;
       }
       else
-         QCLI_Printf(ble_group, "Unable to stop scan: %d\n", Result);
+         QCLI_Printf(ble_Group, "Unable to stop scan: %d\n", Result);
    }
    else
       Result = -1;
@@ -3472,7 +3509,7 @@ void BSC_Timer_Callback(uint32_t BluetoothStackID, uint32_t TimerID, uint32_t Ca
    /* Verify the input parameters.                                      */
    if(BluetoothStackID)
    {
-      QCLI_Printf(ble_group, "Stopping scan after scanning for %u seconds.\n", CallbackParameter);
+      QCLI_Printf(ble_Group, "Stopping scan after scanning for %u seconds.\n", CallbackParameter);
 
       /* Clear the Scan Timer ID.                                       */
       ScanTimerID = 0;
@@ -3495,21 +3532,21 @@ void Conn_Timer_Callback(uint32_t BluetoothStackID, uint32_t TimerID, uint32_t C
 {
 
 
-    QCLI_Printf(ble_group, "In Conn_Timer_Callback\n");
+    QCLI_Printf(ble_Group, "In Conn_Timer_Callback\n");
     int ConnResult;
    /* Verify the input parameters.                                      */
    if(BluetoothStackID)
    {
-      QCLI_Printf(ble_group, "Cancel the connection,if no response is received  within %u seconds.\n", CallbackParameter);
+      QCLI_Printf(ble_Group, "Cancel the connection,if no response is received  within %u seconds.\n", CallbackParameter);
       ConnResult = qapi_BLE_GAP_LE_Cancel_Create_Connection(BluetoothStackID);
 
       if(!ConnResult)
-          QCLI_Printf(ble_group, "cancel Create connection successfull\n");
+          QCLI_Printf(ble_Group, "cancel Create connection successfull\n");
       else
-          QCLI_Printf(ble_group, "Failed to cancel the existing connection\n");
+          QCLI_Printf(ble_Group, "Failed to cancel the existing connection\n");
 
       //WHY?????????????????????
-        //BulbState = BULB_STATE_DISCONNECTED ;
+        //bulb_State = BULB_STATE_DISCONNECTED ;
    
    
    }
@@ -3523,12 +3560,12 @@ int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t Filt
 {
    int Result = 0;
 
-   QCLI_Printf(ble_group, "Msc scan enter \n");
+   QCLI_Printf(ble_Group, "Msc scan enter \n");
 
    /* First, determine if the input parameters appear to be semi-valid. */
    if(BluetoothStackID)
    {
-      QCLI_Printf(ble_group, "Msc valid bt stack id %d\n", BluetoothStackID);
+      QCLI_Printf(ble_Group, "Msc valid bt stack id %d\n", BluetoothStackID);
 
       /* Check to see if we need to configure the default Scan          */
       /* Parameters.                                                    */
@@ -3543,7 +3580,7 @@ int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t Filt
          BLEParameters.Flags |= BLE_PARAMETERS_FLAGS_SCAN_PARAMETERS_VALID;
       }
 
-      QCLI_Printf(ble_group, "Msc before scan duration \n");
+      QCLI_Printf(ble_Group, "Msc before scan duration \n");
 #if 1
       /* See if we should start a timer for this scan.                  */
       if(ScanDuration)
@@ -3569,12 +3606,12 @@ int MscStartScan(uint32_t BluetoothStackID, qapi_BLE_GAP_LE_Filter_Policy_t Filt
          /* scan.                                                       */
          Result = qapi_BLE_GAP_LE_Perform_Scan(BluetoothStackID, QAPI_BLE_ST_ACTIVE_E, BLEParameters.ScanParameters.ScanInterval, BLEParameters.ScanParameters.ScanWindow, QAPI_BLE_LAT_PUBLIC_E, FilterPolicy, TRUE, BLBD_GAP_LE_Event_Callback, 0);
          if(!Result)
-            QCLI_Printf(ble_group, "Msc scan started successfully. Scan Window: %u, Scan Interval: %u.\n", (unsigned int)BLEParameters.ScanParameters.ScanWindow, (unsigned int)BLEParameters.ScanParameters.ScanInterval);
+            QCLI_Printf(ble_Group, "Msc scan started successfully. Scan Window: %u, Scan Interval: %u.\n", (unsigned int)BLEParameters.ScanParameters.ScanWindow, (unsigned int)BLEParameters.ScanParameters.ScanInterval);
          else
-            QCLI_Printf(ble_group, "Msc unable to perform scan: %d\n", Result);
+            QCLI_Printf(ble_Group, "Msc unable to perform scan: %d\n", Result);
       }
       else
-         QCLI_Printf(ble_group, "Msc unable to start scan timer: %d\n", Result);
+         QCLI_Printf(ble_Group, "Msc unable to start scan timer: %d\n", Result);
    }
    else
       Result = -1;
@@ -3604,13 +3641,13 @@ void timer_callback()
         }
 
     }
-    if (!(cnt%30)) {
+    if (!(cnt%15)) {
         /*TODO: Send Smoke sensor notifiation*/
-        notify_smoke_data();
+        notify_Smoke_Data();
         cnt = 0;
     }
     /*Send notification for BULB	*/
-    notify_bulb_state();
+    notify_Bulb_State();
     cnt++;
 }
 
@@ -3619,7 +3656,7 @@ void timer_callback()
 void BLE_timer_init()
 {
 
-  QCLI_Printf(ble_group, "in timer_init\n");
+  QCLI_Printf(ble_Group, "in timer_init\n");
   BLBD_Create_Timer_Attr.deferrable     = false;
   BLBD_Create_Timer_Attr.cb_type        = QAPI_TIMER_FUNC1_CB_TYPE;
   BLBD_Create_Timer_Attr.sigs_func_ptr  = timer_callback; 
@@ -3627,13 +3664,13 @@ void BLE_timer_init()
   qapi_Timer_Def(&(PeriodicScanTimer), &BLBD_Create_Timer_Attr);
 
   /* Start the timer for periodic transmissions.     */
-  BLBD_Set_Timer_Attr.time                   = 1000;
+  BLBD_Set_Timer_Attr.time                   = 2000;
   BLBD_Set_Timer_Attr.reload                 = true;
   BLBD_Set_Timer_Attr.max_deferrable_timeout = 0; 
   BLBD_Set_Timer_Attr.unit                   = QAPI_TIMER_UNIT_MSEC;
   qapi_Timer_Set(PeriodicScanTimer, &BLBD_Set_Timer_Attr);
 
-  QCLI_Printf(ble_group, "BLBD Thread started\n");
+  QCLI_Printf(ble_Group, "BLBD Thread started\n");
   return;
 }
 
@@ -3710,7 +3747,7 @@ static int SendPairingRequest(qapi_BLE_BD_ADDR_t BD_ADDR, boolean_t ConnectionMa
 
       /* Inform the user we are attempting to pair to the remote device.*/
       BD_ADDRToStr(BD_ADDR, BoardStr);
-      QCLI_Printf(ble_group, "Attempting to Pair to %s.\n", BoardStr);
+      QCLI_Printf(ble_Group, "Attempting to Pair to %s.\n", BoardStr);
 
       DisplayPairingInformation(&ExtendedCapabilities);
 
@@ -3734,7 +3771,7 @@ static int SendPairingRequest(qapi_BLE_BD_ADDR_t BD_ADDR, boolean_t ConnectionMa
             /* Since Secure Connections isn't supported go ahead and    */
             /* disable our request for Secure Connections and re-submit */
             /* our request.                                             */
-            QCLI_Printf(ble_group, "Secure Connections not supported, disabling Secure Connections.\n");
+            QCLI_Printf(ble_Group, "Secure Connections not supported, disabling Secure Connections.\n");
 
             ExtendedCapabilities.Flags &= ~QAPI_BLE_GAP_LE_EXTENDED_PAIRING_CAPABILITIES_FLAGS_SECURE_CONNECTIONS;
 
@@ -3742,7 +3779,7 @@ static int SendPairingRequest(qapi_BLE_BD_ADDR_t BD_ADDR, boolean_t ConnectionMa
             ret_val = qapi_BLE_GAP_LE_Extended_Pair_Remote_Device(BluetoothStackID, BLBD_SecurityRemoteBD_ADDR, &ExtendedCapabilities, BLBD_GAP_LE_Event_Callback, 0);
          }
 
-         QCLI_Printf(ble_group, "     GAP_LE_Extended_Pair_Remote_Device returned %d.\n", ret_val);
+         QCLI_Printf(ble_Group, "     GAP_LE_Extended_Pair_Remote_Device returned %d.\n", ret_val);
       }
       else
       {
@@ -3750,12 +3787,12 @@ static int SendPairingRequest(qapi_BLE_BD_ADDR_t BD_ADDR, boolean_t ConnectionMa
          /* pairing process.                                            */
          ret_val = qapi_BLE_GAP_LE_Extended_Request_Security(BluetoothStackID, BD_ADDR, &ExtendedCapabilities, BLBD_GAP_LE_Event_Callback, 0);
 
-         QCLI_Printf(ble_group, "     GAP_LE_Request_Security returned %d.\n", ret_val);
+         QCLI_Printf(ble_Group, "     GAP_LE_Request_Security returned %d.\n", ret_val);
       }
    }
    else
    {
-      QCLI_Printf(ble_group, "Stack ID Invalid.\n");
+      QCLI_Printf(ble_Group, "Stack ID Invalid.\n");
 
       ret_val = -1;
    }
@@ -3770,13 +3807,13 @@ static int SendPairingRequest(qapi_BLE_BD_ADDR_t BD_ADDR, boolean_t ConnectionMa
    /* * NOTE * We will only store characteristc attribute handles that  */
    /*          are supported by this demo.                              */
 static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo, 
-   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData)
+   qapi_BLE_GATT_Service_Discovery_Indication_Data_t *ServiceDiscoveryData, DeviceInfo_t *DeviceInfo)
 {
    unsigned int                                           Index;
    qapi_BLE_GATT_Characteristic_Information_t            *CharacteristicInfoPtr;
-   BLBD_DEVICE_CHARS                          *InstanceInfoPtr;
+   // BLBD_DEVICE_CHARS                          *InstanceInfoPtr;
 
-   QCLI_Printf(ble_group, "Inside BLBDPopulateHandles\n");
+   QCLI_Printf(ble_Group, "Inside BLBDPopulateHandles\n");
 
    //InstanceInfoPtr = blbd_devices[SelectedBLBDDevice].dev_chars;
    //InstanceInfoPtr =  malloc(sizeof(BLBD_DEVICE_CHARS) * 3);
@@ -3786,47 +3823,40 @@ static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo,
    {
      /* Loop through all characteristics discovered in the service and  */
      /* populate the correct entry.                                     */
-     QCLI_Printf(ble_group, "Inside BLBDPopulateHandles matched service uuid\n");
+     QCLI_Printf(ble_Group, "Inside BLBDPopulateHandles matched service uuid\n");
 
      CharacteristicInfoPtr = ServiceDiscoveryData->CharacteristicInformationList;
      if(CharacteristicInfoPtr)
      {
-         //InstanceInfoPtr =  malloc(sizeof(BLBD_DEVICE_CHARS) * ServiceDiscoveryData->NumberOfCharacteristics);
-         InstanceInfoPtr =  malloc(sizeof(BLBD_DEVICE_CHARS) * 1);
+        //InstanceInfoPtr =  malloc(sizeof(BLBD_DEVICE_CHARS) * ServiceDiscoveryData->NumberOfCharacteristics);
+        // InstanceInfoPtr =  malloc(sizeof(BLBD_DEVICE_CHARS) * 1);
         /* Let's loop through the AIOS Characteristic and store their   */
         /* information.                                                 */
         for(Index = 0; Index < ServiceDiscoveryData->NumberOfCharacteristics; Index++)
         {
-                     //InstanceInfoPtr[Index].Valid =  TRUE;        
-                     /* Store the properties. */
-                     if(QAPI_BLE_BLBD_COMPARE_CHAR_UUID_TO_UUID_16(CharacteristicInfoPtr[Index].Characteristic_UUID.UUID.UUID_16 )){                       
-                        InstanceInfoPtr[0].Properties = CharacteristicInfoPtr[Index].Characteristic_Properties;
-                        QCLI_Printf(ble_group, "Found get/set colour charecteristic\n");
-                     /* Store the attribute handle information for    */
-                     /* this Digital Characteristic.                  */
-                        InstanceInfoPtr[0].Characteristic_Handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
-			            bulb_char_handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
-			            BLBDWriteData(0xFFFFFFFF);
-			            BulbState = BULB_STATE_ON;
-                     }
-                     /* Call the helper function to populate the      */
-                     /* descriptor handles for this attribute handle  */
-                     /* entry.                                        */
-                     //StoreDescriptorHandles(InstanceInfoPtr, &(CharacteristicInfoPtr[Index]));
+            //InstanceInfoPtr[Index].Valid =  TRUE;
+            /* Store the properties. */
+            if(QAPI_BLE_BLBD_COMPARE_CHAR_UUID_TO_UUID_16(CharacteristicInfoPtr[Index].Characteristic_UUID.UUID.UUID_16 )){
+                //InstanceInfoPtr[0].Properties = CharacteristicInfoPtr[Index].Characteristic_Properties;
+                QCLI_Printf(ble_Group, "Found get/set colour charecteristic\n");
+                /* Store the attribute handle information for    */
+                /* this Digital Characteristic.                  */
+                //InstanceInfoPtr[0].Characteristic_Handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
+                bulb_char_handle = CharacteristicInfoPtr[Index].Characteristic_Handle;
+                BLBDWriteData(0xFFFFFFFF);
+                bulb_State = BULB_STATE_ON;
+                DeviceInfo->Flags &= ~DEVICE_INFO_FLAGS_SERVICE_DISCOVERY_OUTSTANDING;
 
-                     /* We do not want to populate another instance so*/
-                     /* we are done.                                  */
-		     
-           	    
+                QCLI_Printf(ble_Group, "   Handle:        0x%04X\n", CharacteristicInfoPtr[Index].Characteristic_Handle);
+                QCLI_Printf(ble_Group, "   Properties:    0x%02X\n", CharacteristicInfoPtr[Index].Characteristic_Properties);
+                QCLI_Printf(ble_Group, "   UUID:          0x");
+                DisplayUUID(&(CharacteristicInfoPtr[Index].Characteristic_UUID));
+                break;
 
-                    QCLI_Printf(ble_group, "   Handle:        0x%04X\n", CharacteristicInfoPtr[Index].Characteristic_Handle);
-                    QCLI_Printf(ble_group, "   Properties:    0x%02X\n", CharacteristicInfoPtr[Index].Characteristic_Properties);
-                    QCLI_Printf(ble_group, "   UUID:          0x");
-                    DisplayUUID(&(CharacteristicInfoPtr[Index].Characteristic_UUID));
+            }
         }
 
      }
-
   }
 
 }
@@ -3835,27 +3865,27 @@ static void BLBDPopulateHandles(AIOP_Client_Information_t *ClientInfo,
 static void QAPI_BLE_BTPSAPI GATT_BLBD_Service_Discovery_Event_Callback(uint32_t BluetoothStackID, qapi_BLE_GATT_Service_Discovery_Event_Data_t *GATT_Service_Discovery_Event_Data, uint32_t CallbackParameter)
 {
    DeviceInfo_t *DeviceInfo;
-   QCLI_Printf(ble_group,"Discovred1");
+   QCLI_Printf(ble_Group,"Discovred1");
    if((BluetoothStackID) && (GATT_Service_Discovery_Event_Data))
    {
- QCLI_Printf(ble_group,"Discovred2");
+ QCLI_Printf(ble_Group,"Discovred2");
       if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, Current_Conn_Addr)) != NULL)
       {
- QCLI_Printf(ble_group,"Discovred3");
+ QCLI_Printf(ble_Group,"Discovred3");
          switch(GATT_Service_Discovery_Event_Data->Event_Data_Type)
          {
             case QAPI_BLE_ET_GATT_SERVICE_DISCOVERY_INDICATION_E:
                /* Verify the event data.                                */
                if(GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data)
                {
-                  QCLI_Printf(ble_group, "Service 0x%04X - 0x%04X, UUID: ", 
+                  QCLI_Printf(ble_Group, "Service 0x%04X - 0x%04X, UUID: ",
                      GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data->ServiceInformation.Service_Handle, 
                      GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data->ServiceInformation.End_Group_Handle);
                   DisplayUUID(&(GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data->ServiceInformation.UUID));
-                  QCLI_Printf(ble_group, "\n");
+                  QCLI_Printf(ble_Group, "\n");
 
                   /* Attempt to populate BLBD handles.                  */
-                  BLBDPopulateHandles(&(DeviceInfo->AIOPClientInfo), GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data);
+                  BLBDPopulateHandles(&(DeviceInfo->AIOPClientInfo), GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Indication_Data , DeviceInfo);
 
                }
                break;
@@ -3863,7 +3893,7 @@ static void QAPI_BLE_BTPSAPI GATT_BLBD_Service_Discovery_Event_Callback(uint32_t
                /* Verify the event data.                                */
                if(GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Complete_Data)
                {
-                  QCLI_Printf(ble_group, "Service Discovery Operation Complete, Status 0x%02X.\n", GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Complete_Data->Status);
+                  QCLI_Printf(ble_Group, "Service Discovery Operation Complete, Status 0x%02X.\n", GATT_Service_Discovery_Event_Data->Event_Data.GATT_Service_Discovery_Complete_Data->Status);
 
                   /* Flag that no service discovery operation is        */
                   /* outstanding for this device.                       */
@@ -3902,7 +3932,7 @@ static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR)
          if((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList, 
             BD_ADDR)) != NULL)
          {
-            QCLI_Printf(ble_group, "inside DiscoverBLBDServices \n");
+            QCLI_Printf(ble_Group, "inside DiscoverBLBDServices \n");
 
 
             /* Verify that no service discovery is outstanding for this */
@@ -3916,7 +3946,7 @@ static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR)
                if(!Result)
                {
                   /* Display success message.                           */
-                  QCLI_Printf(ble_group, "qapi_BLE_GATT_Service_Discovery_Start() success.\n");
+                  QCLI_Printf(ble_Group, "qapi_BLE_GATT_Service_Discovery_Start() success.\n");
 
                   /* Flag that a Service Discovery Operation is         */
                   /* outstanding.                                       */
@@ -3928,20 +3958,20 @@ static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR)
                else
                {
                   /* An error occur so just clean-up.                   */
-                  QCLI_Printf(ble_group, "Error - BLBD GATT_Service_Discovery_Start returned %d.\n", Result);
+                  QCLI_Printf(ble_Group, "Error - BLBD GATT_Service_Discovery_Start returned %d.\n", Result);
                   ret_val = QCLI_STATUS_ERROR_E;
                }
             }
             else
             {
-//               QCLI_Printf(ble_group, "BLBD Service Discovery Operation Outstanding for Device. %d\n", deviceIndex);
+//               QCLI_Printf(ble_Group, "BLBD Service Discovery Operation Outstanding for Device. %d\n", deviceIndex);
 
                ret_val = QCLI_STATUS_ERROR_E;
             }
          }
          else
          {
-            QCLI_Printf(ble_group, "No Device Info.\n");
+            QCLI_Printf(ble_Group, "No Device Info.\n");
 
             ret_val = QCLI_STATUS_ERROR_E;
          }
@@ -3951,7 +3981,7 @@ static QCLI_Command_Status_t DiscoverBLBDServices(qapi_BLE_BD_ADDR_t BD_ADDR)
       }
       else
       {
-         QCLI_Printf(ble_group, "Unable to acquire Bluetooth Stack Lock.\n");
+         QCLI_Printf(ble_Group, "Unable to acquire Bluetooth Stack Lock.\n");
 
          ret_val = QCLI_STATUS_ERROR_E;
       }
@@ -3974,13 +4004,13 @@ static int EncryptionInformationRequestResponse(qapi_BLE_BD_ADDR_t BD_ADDR, uint
       /* Make sure the input parameters are semi-valid.                 */
       if((!QAPI_BLE_COMPARE_NULL_BD_ADDR(BD_ADDR)) && (GAP_LE_Authentication_Response_Information))
       {
-         QCLI_Printf(ble_group, "   Calling GAP_LE_Generate_Long_Term_Key.\n");
+         QCLI_Printf(ble_Group, "   Calling GAP_LE_Generate_Long_Term_Key.\n");
 
          /* Generate a new LTK, EDIV and Rand tuple.                    */
          ret_val = qapi_BLE_GAP_LE_Generate_Long_Term_Key(BluetoothStackID, (qapi_BLE_Encryption_Key_t *)(&DHK), (qapi_BLE_Encryption_Key_t *)(&ER), &(GAP_LE_Authentication_Response_Information->Authentication_Data.Encryption_Information.LTK), &LocalDiv, &(GAP_LE_Authentication_Response_Information->Authentication_Data.Encryption_Information.EDIV), &(GAP_LE_Authentication_Response_Information->Authentication_Data.Encryption_Information.Rand));
          if(!ret_val)
          {
-            QCLI_Printf(ble_group, "   Encryption Information Request Response.\n");
+            QCLI_Printf(ble_Group, "   Encryption Information Request Response.\n");
 
             /* Response to the request with the LTK, EDIV and Rand      */
             /* values.                                                  */
@@ -3991,28 +4021,28 @@ static int EncryptionInformationRequestResponse(qapi_BLE_BD_ADDR_t BD_ADDR, uint
             ret_val = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, BD_ADDR, GAP_LE_Authentication_Response_Information);
             if(!ret_val)
             {
-               QCLI_Printf(ble_group, "   qapi_BLE_GAP_LE_Authentication_Response (larEncryptionInformation) success.\n");
+               QCLI_Printf(ble_Group, "   qapi_BLE_GAP_LE_Authentication_Response (larEncryptionInformation) success.\n");
             }
             else
             {
-               QCLI_Printf(ble_group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", ret_val);
+               QCLI_Printf(ble_Group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", ret_val);
             }
          }
          else
          {
-            QCLI_Printf(ble_group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", ret_val);
+            QCLI_Printf(ble_Group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", ret_val);
          }
       }
       else
       {
-         QCLI_Printf(ble_group, "Invalid Parameters.\n");
+         QCLI_Printf(ble_Group, "Invalid Parameters.\n");
 
          ret_val = -1;
       }
    }
    else
    {
-      QCLI_Printf(ble_group, "Stack ID Invalid.\n");
+      QCLI_Printf(ble_Group, "Stack ID Invalid.\n");
 
       ret_val = -1;
    }
@@ -4050,38 +4080,38 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
       {
 #ifdef V2
          case QAPI_BLE_ET_LE_SCAN_TIMEOUT_E:
-            QCLI_Printf(ble_group, "etLE_Scan_Timeout with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Scan_Timeout with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
             break;
          case QAPI_BLE_ET_LE_PHY_UPDATE_COMPLETE_E:
-            QCLI_Printf(ble_group, "etLE_PHY_Update_Complete with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_PHY_Update_Complete with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
 
-            QCLI_Printf(ble_group, "  Status:  %d.\n", (int)(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->Status));
-            QCLI_Printf(ble_group, "  Address: 0x%02X%02X%02X%02X%02X%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR5,
+            QCLI_Printf(ble_Group, "  Status:  %d.\n", (int)(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->Status));
+            QCLI_Printf(ble_Group, "  Address: 0x%02X%02X%02X%02X%02X%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR5,
                                                                                GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR4,
                                                                                GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR3,
                                                                                GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR2,
                                                                                GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR1,
                                                                                GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->BD_ADDR.BD_ADDR0);
-           // QCLI_Printf(ble_group, "  Tx PHY:  %s.\n", PHYToString(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->TX_PHY));
-          //  QCLI_Printf(ble_group, "  Rx PHY:  %s.\n", PHYToString(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->RX_PHY));
+           // QCLI_Printf(ble_Group, "  Tx PHY:  %s.\n", PHYToString(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->TX_PHY));
+          //  QCLI_Printf(ble_Group, "  Rx PHY:  %s.\n", PHYToString(GAP_LE_Event_Data->Event_Data.GAP_LE_Phy_Update_Complete_Event_Data->RX_PHY));
 
             break;
        
        
          case QAPI_BLE_ET_LE_CHANNEL_SELECTION_ALGORITHM_UPDATE_E:
-            QCLI_Printf(ble_group, "etLE_Channel_Selection_Algorithm_Update with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Channel_Selection_Algorithm_Update with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
 
             /* Display the new CSA.                                     */
             switch(GAP_LE_Event_Data->Event_Data.GAP_LE_Channel_Selection_Algorithm_Update_Event_Data->Channel_Selection_Algorithm)
             {
                case QAPI_BLE_SA_ALGORITHM_NUM1_E:
-                  QCLI_Printf(ble_group, "  Channel Selection Algorithm:        %s.\n", "CSA #1");
+                  QCLI_Printf(ble_Group, "  Channel Selection Algorithm:        %s.\n", "CSA #1");
                   break;
                case QAPI_BLE_SA_ALGORITHM_NUM2_E:
-                  QCLI_Printf(ble_group, "  Channel Selection Algorithm:        %s.\n", "CSA #2");
+                  QCLI_Printf(ble_Group, "  Channel Selection Algorithm:        %s.\n", "CSA #2");
                   break;
                default:
-                  QCLI_Printf(ble_group, "  Channel Selection Algorithm:        %s.\n", "CSA Unkown");
+                  QCLI_Printf(ble_Group, "  Channel Selection Algorithm:        %s.\n", "CSA Unkown");
                   break;
             }
 
@@ -4089,146 +4119,144 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
             switch(GAP_LE_Event_Data->Event_Data.GAP_LE_Channel_Selection_Algorithm_Update_Event_Data->Connection_Address_Type)
             {
                case QAPI_BLE_LAT_PUBLIC_E:
-                  QCLI_Printf(ble_group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
+                  QCLI_Printf(ble_Group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
                   break;
                case QAPI_BLE_LAT_RANDOM_E:
-                  QCLI_Printf(ble_group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_RANDOM_E");
+                  QCLI_Printf(ble_Group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_RANDOM_E");
                   break;
                case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
-                  QCLI_Printf(ble_group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
+                  QCLI_Printf(ble_Group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
                   break;
                case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
-                  QCLI_Printf(ble_group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
+                  QCLI_Printf(ble_Group, "  Connection Address Type:            %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
                   break;
                default:
-                  QCLI_Printf(ble_group, "  Connection Address Type:            Invalid.\n");
+                  QCLI_Printf(ble_Group, "  Connection Address Type:            Invalid.\n");
                   break;
             }
 
             BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Channel_Selection_Algorithm_Update_Event_Data->Connection_Address, BoardStr);
-            QCLI_Printf(ble_group, "  Connection Address:                 %s.\n", BoardStr);
+            QCLI_Printf(ble_Group, "  Connection Address:                 %s.\n", BoardStr);
             break;
  
 #endif
          case QAPI_BLE_ET_LE_DATA_LENGTH_CHANGE_E:
-            QCLI_Printf(ble_group, "etLE_Data_Length_Change with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Data_Length_Change with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
 
             BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->BD_ADDR, BoardStr);
-            QCLI_Printf(ble_group, "  Connection Address:                 %s.\n", BoardStr);
-            QCLI_Printf(ble_group, "  Max Tx Octets:                      %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxTxOctets);
-            QCLI_Printf(ble_group, "  Max Tx Time:                        %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxTxTime);
-            QCLI_Printf(ble_group, "  Max Rx Octets:                      %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxRxOctets);
-            QCLI_Printf(ble_group, "  Max Rx Time:                        %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxRxTime);
+            QCLI_Printf(ble_Group, "  Connection Address:                 %s.\n", BoardStr);
+            QCLI_Printf(ble_Group, "  Max Tx Octets:                      %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxTxOctets);
+            QCLI_Printf(ble_Group, "  Max Tx Time:                        %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxTxTime);
+            QCLI_Printf(ble_Group, "  Max Rx Octets:                      %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxRxOctets);
+            QCLI_Printf(ble_Group, "  Max Rx Time:                        %u.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Data_Length_Change_Event_Data->MaxRxTime);
             break;
 
 
          case QAPI_BLE_ET_LE_ADVERTISING_REPORT_E:
-            QCLI_Printf(ble_group, "etLE_Advertising_Report with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
-            QCLI_Printf(ble_group, "  %d Responses.\n",GAP_LE_Event_Data->Event_Data.GAP_LE_Advertising_Report_Event_Data->Number_Device_Entries);
+            //QCLI_Printf(ble_Group, "etLE_Advertising_Report with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            //QCLI_Printf(ble_Group, "  %d Responses.\n",GAP_LE_Event_Data->Event_Data.GAP_LE_Advertising_Report_Event_Data->Number_Device_Entries);
 
             for(Index = 0; Index < GAP_LE_Event_Data->Event_Data.GAP_LE_Advertising_Report_Event_Data->Number_Device_Entries; Index++)
             {
-               DeviceEntryPtr = &(GAP_LE_Event_Data->Event_Data.GAP_LE_Advertising_Report_Event_Data->Advertising_Data[Index]);
+                DeviceEntryPtr = &(GAP_LE_Event_Data->Event_Data.GAP_LE_Advertising_Report_Event_Data->Advertising_Data[Index]);
 
 #ifdef HOME_AUTOMATION
-              
-		 char *str;
-		str = GetLocalNameInAD(&(DeviceEntryPtr->Advertising_Data));
-		
- 	  if(!strncmp(str, BLBD_DEVICE_SIGNATURE,8))
-   	  {
-		QCLI_Printf(ble_group, "BLBD Print - device found %s, Connecting\n", str);
-		/*Call connect API*/
-#if 1
-        StopScan(BluetoothStackID);
-        ConnectLEDevice(BluetoothStackID, FALSE, &(DeviceEntryPtr->BD_ADDR),DeviceEntryPtr->Address_Type);
+
+                char *str;
+                str = GetLocalNameInAD(&(DeviceEntryPtr->Advertising_Data));
+
+                if(!strncmp(str, BLBD_DEVICE_SIGNATURE,8))
+                {
+                    QCLI_Printf(ble_Group, "BLBD Print - device found %s, Connecting\n", str);
+                    /*Call connect API*/
+                    StopScan(BluetoothStackID);
+                    ConnectLEDevice(BluetoothStackID, FALSE, &(DeviceEntryPtr->BD_ADDR),DeviceEntryPtr->Address_Type);
 #endif
-      } 
-#endif
-               
-               /* Display the Address Type.                             */
-               switch(DeviceEntryPtr->Address_Type)
-               {
-                  case QAPI_BLE_LAT_PUBLIC_E:
-                     QCLI_Printf(ble_group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
-                     break;
-                  case QAPI_BLE_LAT_RANDOM_E:
-                     QCLI_Printf(ble_group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
-                     break;
-                  case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
-                     QCLI_Printf(ble_group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
-                     break;
-                  case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
-                     QCLI_Printf(ble_group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
-                     break;
-                  default:
-                     QCLI_Printf(ble_group, "  Address Type:        Invalid.\n");
-                     break;
-               }
 
-               /* Display the Device Address.                           */
-               QCLI_Printf(ble_group, "  Address: 0x%02X%02X%02X%02X%02X%02X.\n", DeviceEntryPtr->BD_ADDR.BD_ADDR5, DeviceEntryPtr->BD_ADDR.BD_ADDR4, DeviceEntryPtr->BD_ADDR.BD_ADDR3, DeviceEntryPtr->BD_ADDR.BD_ADDR2, DeviceEntryPtr->BD_ADDR.BD_ADDR1, DeviceEntryPtr->BD_ADDR.BD_ADDR0);
+                    /* Display the Address Type.                             */
+                    switch(DeviceEntryPtr->Address_Type)
+                    {
+                        case QAPI_BLE_LAT_PUBLIC_E:
+                            QCLI_Printf(ble_Group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
+                            break;
+                        case QAPI_BLE_LAT_RANDOM_E:
+                            QCLI_Printf(ble_Group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
+                            break;
+                        case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
+                            QCLI_Printf(ble_Group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
+                            break;
+                        case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
+                            QCLI_Printf(ble_Group, "  Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
+                            break;
+                        default:
+                            QCLI_Printf(ble_Group, "  Address Type:        Invalid.\n");
+                            break;
+                    }
 
-               if(DisplayAdvertisingEventData)
-               {
-                  /* Display the packet type for the device             */
-                  switch(DeviceEntryPtr->Advertising_Report_Type)
-                  {
-                     case QAPI_BLE_RT_CONNECTABLE_UNDIRECTED_E:
-                        QCLI_Printf(ble_group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_CONNECTABLE_UNDIRECTED_E");
-                        break;
-                     case QAPI_BLE_RT_CONNECTABLE_DIRECTED_E:
-                        QCLI_Printf(ble_group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_CONNECTABLE_DIRECTED_E");
-                        break;
-                     case QAPI_BLE_RT_SCANNABLE_UNDIRECTED_E:
-                        QCLI_Printf(ble_group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_SCANNABLE_UNDIRECTED_E");
-                        break;
-                     case QAPI_BLE_RT_NON_CONNECTABLE_UNDIRECTED_E:
-                        QCLI_Printf(ble_group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_NON_CONNECTABLE_UNDIRECTED_E");
-                        break;
-                     case QAPI_BLE_RT_SCAN_RESPONSE_E:
-                        QCLI_Printf(ble_group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_SCAN_RESPONSE_E");
-                        break;
-                  }
+                    /* Display the Device Address.                           */
+                    QCLI_Printf(ble_Group, "  Address: 0x%02X%02X%02X%02X%02X%02X.\n", DeviceEntryPtr->BD_ADDR.BD_ADDR5, DeviceEntryPtr->BD_ADDR.BD_ADDR4, DeviceEntryPtr->BD_ADDR.BD_ADDR3, DeviceEntryPtr->BD_ADDR.BD_ADDR2, DeviceEntryPtr->BD_ADDR.BD_ADDR1, DeviceEntryPtr->BD_ADDR.BD_ADDR0);
 
-                  QCLI_Printf(ble_group, "  RSSI: %d.\n", (int)(DeviceEntryPtr->RSSI));
-                  QCLI_Printf(ble_group, "  Data Length: %d.\n", DeviceEntryPtr->Raw_Report_Length);
-               }
+                    if(DisplayAdvertisingEventData)
+                    {
+                        /* Display the packet type for the device             */
+                        switch(DeviceEntryPtr->Advertising_Report_Type)
+                        {
+                            case QAPI_BLE_RT_CONNECTABLE_UNDIRECTED_E:
+                                QCLI_Printf(ble_Group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_CONNECTABLE_UNDIRECTED_E");
+                                break;
+                            case QAPI_BLE_RT_CONNECTABLE_DIRECTED_E:
+                                QCLI_Printf(ble_Group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_CONNECTABLE_DIRECTED_E");
+                                break;
+                            case QAPI_BLE_RT_SCANNABLE_UNDIRECTED_E:
+                                QCLI_Printf(ble_Group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_SCANNABLE_UNDIRECTED_E");
+                                break;
+                            case QAPI_BLE_RT_NON_CONNECTABLE_UNDIRECTED_E:
+                                QCLI_Printf(ble_Group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_NON_CONNECTABLE_UNDIRECTED_E");
+                                break;
+                            case QAPI_BLE_RT_SCAN_RESPONSE_E:
+                                QCLI_Printf(ble_Group, "  Advertising Type: %s.\n", "QAPI_BLE_RT_SCAN_RESPONSE_E");
+                                break;
+                        }
+
+                        QCLI_Printf(ble_Group, "  RSSI: %d.\n", (int)(DeviceEntryPtr->RSSI));
+                        QCLI_Printf(ble_Group, "  Data Length: %d.\n", DeviceEntryPtr->Raw_Report_Length);
+                    } 
+                }
             }
             break;
          case QAPI_BLE_ET_LE_CONNECTION_COMPLETE_E:
-            QCLI_Printf(ble_group, "etLE_Connection_Complete with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Connection_Complete with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
 
             if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data)
             {
                 BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, BoardStr);
 
-                QCLI_Printf(ble_group, "   Status:              0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status);
-                QCLI_Printf(ble_group, "   Role:                %s.\n", (GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master)?"Master":"Slave");
+                QCLI_Printf(ble_Group, "   Status:              0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status);
+                QCLI_Printf(ble_Group, "   Role:                %s.\n", (GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Master)?"Master":"Slave");
                 switch(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address_Type)
                 {
                     case QAPI_BLE_LAT_PUBLIC_E:
-                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
+                        QCLI_Printf(ble_Group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
                         break;
                     case QAPI_BLE_LAT_RANDOM_E:
-                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
+                        QCLI_Printf(ble_Group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_E");
                         break;
                     case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
-                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
+                        QCLI_Printf(ble_Group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
                         break;
                     case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
-                        QCLI_Printf(ble_group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
+                        QCLI_Printf(ble_Group, "   Address Type:        %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
                         break;
                     default:
-                        QCLI_Printf(ble_group, "   Address Type:        Invalid.\n");
+                        QCLI_Printf(ble_Group, "   Address Type:        Invalid.\n");
                         break;
                 }
-                QCLI_Printf(ble_group, "   BD_ADDR:             %s.\n", BoardStr);
+                QCLI_Printf(ble_Group, "   BD_ADDR:             %s.\n", BoardStr);
 
                 if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Status == QAPI_BLE_HCI_ERROR_CODE_NO_ERROR)
                 {
-                    QCLI_Printf(ble_group, "   Connection Interval: %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Connection_Interval);
-                    QCLI_Printf(ble_group, "   Slave Latency:       %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Slave_Latency);
+                    QCLI_Printf(ble_Group, "   Connection Interval: %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Connection_Interval);
+                    QCLI_Printf(ble_Group, "   Slave Latency:       %u.\n", (unsigned int)GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Current_Connection_Parameters.Slave_Latency);
 
                     /* Store the GAP LE Connection information that needs */
                     /* to be stored for the remote device.                */
@@ -4267,11 +4295,11 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 
                             if(!qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(BluetoothStackID, Peer_Identity_Address_Type, Peer_Identity_Address, &StatusResult, &Local_Resolvable_Address))
                             {
-                                QCLI_Printf(ble_group, "   qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(): 0x%02X.\n", StatusResult);
+                                QCLI_Printf(ble_Group, "   qapi_BLE_HCI_LE_Read_Local_Resolvable_Address(): 0x%02X.\n", StatusResult);
                                 if(!StatusResult)
                                 {
                                     BD_ADDRToStr(Local_Resolvable_Address, BoardStr);
-                                    QCLI_Printf(ble_group, "   Local RPA:           %s.\n", BoardStr);
+                                    QCLI_Printf(ble_Group, "   Local RPA:           %s.\n", BoardStr);
                                 }
                             }
                         }
@@ -4281,55 +4309,55 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 
                     memcpy(&Current_Conn_Addr,&(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address),sizeof(qapi_BLE_BD_ADDR_t));
                     /*Initiate Pairing */
-                    QCLI_Printf(ble_group, "Device is master initiating the pairing request \n" );
+                    QCLI_Printf(ble_Group, "Device is master initiating the pairing request \n" );
                     if(!SendPairingRequest(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Complete_Event_Data->Peer_Address, TRUE))
-                        QCLI_Printf(ble_group, "pairing request sent successfully \n" );
+                        QCLI_Printf(ble_Group, "pairing request sent successfully \n" );
                     else                                                  
-                        QCLI_Printf(ble_group, "Failed to send the pairing request \n" );
+                        QCLI_Printf(ble_Group, "Failed to send the pairing request \n" );
 
                     qapi_BLE_BSC_StopTimer(BluetoothStackID, ConnTimerID);
-                    QCLI_Printf(ble_group, "Connection timer stopped \n" );
-                    //BulbState = BULB_STATE_CONNECTED;
+                    QCLI_Printf(ble_Group, "Connection timer stopped \n" );
+                    //bulb_State = BULB_STATE_CONNECTED;
 
                     blbd_scan_permitted = 0;
                     state_flags &= ~SCAN_PERMITTED;
-                    BulbState =  BULB_STATE_ON;
+                    bulb_State =  BULB_STATE_ON;
                 }
             }
 
             break;
 
          case QAPI_BLE_ET_LE_DISCONNECTION_COMPLETE_E:
-            QCLI_Printf(ble_group, "etLE_Disconnection_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Disconnection_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
             
             
             if(GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data)
             {
-               QCLI_Printf(ble_group, "   Status: 0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Status);
-               QCLI_Printf(ble_group, "   Reason: 0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Reason);
+               QCLI_Printf(ble_Group, "   Status: 0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Status);
+               QCLI_Printf(ble_Group, "   Reason: 0x%02X.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Reason);
 
                BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Disconnection_Complete_Event_Data->Peer_Address, BoardStr);
-               QCLI_Printf(ble_group, "   BD_ADDR: %s.\n", BoardStr);
+               QCLI_Printf(ble_Group, "   BD_ADDR: %s.\n", BoardStr);
                /* Clear the Send Information.                           */
                SendInfo.BytesToSend = 0;
                SendInfo.BytesSent   = 0;
             }
                 blbd_scan_permitted = 1;
                 state_flags = state_flags | SCAN_PERMITTED;
-	        BulbState = BULB_STATE_DISCONNECTED;
+            bulb_State = BULB_STATE_DISCONNECTED;
 	        memset(&Current_Conn_Addr,0,sizeof(qapi_BLE_BD_ADDR_t));
             break;
          case QAPI_BLE_ET_LE_CONNECTION_PARAMETER_UPDATE_REQUEST_E:
-            QCLI_Printf(ble_group, "etLE_Connection_Parameter_Update_Request with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Connection_Parameter_Update_Request with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
 
             if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data)
             {
                BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->BD_ADDR, BoardStr);
-               QCLI_Printf(ble_group, "   BD_ADDR:                     %s\n", BoardStr);
-               QCLI_Printf(ble_group, "   Connection Interval Minimum: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Min);
-               QCLI_Printf(ble_group, "   Connection Interval Maximum: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Max);
-               QCLI_Printf(ble_group, "   Slave Latency:               %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Slave_Latency);
-               QCLI_Printf(ble_group, "   Supervision Timeout:         %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Supervision_Timeout);
+               QCLI_Printf(ble_Group, "   BD_ADDR:                     %s\n", BoardStr);
+               QCLI_Printf(ble_Group, "   Connection Interval Minimum: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Min);
+               QCLI_Printf(ble_Group, "   Connection Interval Maximum: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Max);
+               QCLI_Printf(ble_Group, "   Slave Latency:               %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Slave_Latency);
+               QCLI_Printf(ble_Group, "   Supervision Timeout:         %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Supervision_Timeout);
 
                ConnectionParams.Connection_Interval_Min    = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Min;
                ConnectionParams.Connection_Interval_Max    = GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Update_Request_Event_Data->Conn_Interval_Max;
@@ -4342,26 +4370,26 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
             }
             break;
          case QAPI_BLE_ET_LE_CONNECTION_PARAMETER_UPDATED_E:
-            QCLI_Printf(ble_group, "etLE_Connection_Parameter_Updated with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Connection_Parameter_Updated with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
 
             if(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data)
             {
                BD_ADDRToStr(GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->BD_ADDR, BoardStr);
-               QCLI_Printf(ble_group, "   BD_ADDR:             %s\n", BoardStr);
-               QCLI_Printf(ble_group, "   Status:              %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Status);
-               QCLI_Printf(ble_group, "   Connection Interval: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Connection_Interval);
-               QCLI_Printf(ble_group, "   Slave Latency:       %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Slave_Latency);
-               QCLI_Printf(ble_group, "   Supervision Timeout: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Supervision_Timeout);
+               QCLI_Printf(ble_Group, "   BD_ADDR:             %s\n", BoardStr);
+               QCLI_Printf(ble_Group, "   Status:              %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Status);
+               QCLI_Printf(ble_Group, "   Connection Interval: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Connection_Interval);
+               QCLI_Printf(ble_Group, "   Slave Latency:       %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Slave_Latency);
+               QCLI_Printf(ble_Group, "   Supervision Timeout: %d\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Connection_Parameter_Updated_Event_Data->Current_Connection_Parameters.Supervision_Timeout);
             }
             break;
          case QAPI_BLE_ET_LE_ENCRYPTION_CHANGE_E:
-            QCLI_Printf(ble_group, "etLE_Encryption_Change with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Encryption_Change with size %d.\n",(int)GAP_LE_Event_Data->Event_Data_Size);
             break;
          case QAPI_BLE_ET_LE_ENCRYPTION_REFRESH_COMPLETE_E:
-            QCLI_Printf(ble_group, "etLE_Encryption_Refresh_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Encryption_Refresh_Complete with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
             break;
          case QAPI_BLE_ET_LE_AUTHENTICATION_E:
-            QCLI_Printf(ble_group, "etLE_Authentication with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "etLE_Authentication with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
 
             /* Make sure the authentication event data is valid before  */
             /* continuing.                                              */
@@ -4372,8 +4400,8 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                switch(Authentication_Event_Data->GAP_LE_Authentication_Event_Type)
                {
                   case QAPI_BLE_LAT_LONG_TERM_KEY_REQUEST_E:
-                     QCLI_Printf(ble_group, "    latKeyRequest: \n");
-                     QCLI_Printf(ble_group, "      BD_ADDR: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "    latKeyRequest: \n");
+                     QCLI_Printf(ble_Group, "      BD_ADDR: %s.\n", BoardStr);
 
                      /* Initialize the authentication response data to  */
                      /* indicate no LTK present (if we find or          */
@@ -4417,7 +4445,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         Result = qapi_BLE_GAP_LE_Regenerate_Long_Term_Key(BluetoothStackID, (qapi_BLE_Encryption_Key_t *)(&DHK), (qapi_BLE_Encryption_Key_t *)(&ER), Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.EDIV, &(Authentication_Event_Data->Authentication_Event_Data.Long_Term_Key_Request.Rand), &GeneratedLTK);
                         if(!Result)
                         {
-                           QCLI_Printf(ble_group, "      GAP_LE_Regenerate_Long_Term_Key Success.\n");
+                           QCLI_Printf(ble_Group, "      GAP_LE_Regenerate_Long_Term_Key Success.\n");
 
                            /* Respond with the Re-Generated Long Term   */
                            /* Key.                                      */
@@ -4428,7 +4456,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         }
                         else
                         {
-                           QCLI_Printf(ble_group, "      GAP_LE_Regenerate_Long_Term_Key returned %d.\n",Result);
+                           QCLI_Printf(ble_Group, "      GAP_LE_Regenerate_Long_Term_Key returned %d.\n",Result);
                         }
                      }
 
@@ -4436,7 +4464,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                      if(Result)
                      {
-                        QCLI_Printf(ble_group, "      GAP_LE_Authentication_Response returned %d.\n",Result);
+                        QCLI_Printf(ble_Group, "      GAP_LE_Authentication_Response returned %d.\n",Result);
                      }
                      break;
                   case QAPI_BLE_LAT_SECURITY_REQUEST_E:
@@ -4444,10 +4472,10 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      /* * NOTE * This is only sent from Slave to Master.*/
                      /*          Thus we must be the Master in this     */
                      /*          connection.                            */
-                     QCLI_Printf(ble_group, "    latSecurityRequest:.\n");
-                     QCLI_Printf(ble_group, "      BD_ADDR: %s.\n", BoardStr);
-                     QCLI_Printf(ble_group, "      Bonding Type: %s.\n", ((Authentication_Event_Data->Authentication_Event_Data.Security_Request.Bonding_Type == QAPI_BLE_LBT_BONDING_E)?"Bonding":"No Bonding"));
-                     QCLI_Printf(ble_group, "      MITM: %s.\n", ((Authentication_Event_Data->Authentication_Event_Data.Security_Request.MITM)?"YES":"NO"));
+                     QCLI_Printf(ble_Group, "    latSecurityRequest:.\n");
+                     QCLI_Printf(ble_Group, "      BD_ADDR: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "      Bonding Type: %s.\n", ((Authentication_Event_Data->Authentication_Event_Data.Security_Request.Bonding_Type == QAPI_BLE_LBT_BONDING_E)?"Bonding":"No Bonding"));
+                     QCLI_Printf(ble_Group, "      MITM: %s.\n", ((Authentication_Event_Data->Authentication_Event_Data.Security_Request.MITM)?"YES":"NO"));
 
                      /* Make sure we are NOT pairing or re-establishing */
                      /* security with another remote device.            */
@@ -4468,7 +4496,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                            /* stored for this device.                   */
                            if(DeviceInfo->Flags & DEVICE_INFO_FLAGS_LTK_VALID)
                            {
-                              QCLI_Printf(ble_group, "Attempting to Re-Establish Security.\n");
+                              QCLI_Printf(ble_Group, "Attempting to Re-Establish Security.\n");
 
                               /* Attempt to re-establish security to    */
                               /* this device.                           */
@@ -4481,7 +4509,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                               Result = qapi_BLE_GAP_LE_Reestablish_Security(BluetoothStackID, BLBD_SecurityRemoteBD_ADDR, &GAP_LE_Security_Information, GAP_LE_Event_Callback, 0);
                               if(Result)
                               {
-                                 QCLI_Printf(ble_group, "GAP_LE_Reestablish_Security returned %d.\n", Result);
+                                 QCLI_Printf(ble_Group, "GAP_LE_Reestablish_Security returned %d.\n", Result);
                               }
                            }
                            else
@@ -4504,7 +4532,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      {
                         /* Inform the user that we cannot accept the    */
                         /* request at this time.                        */
-                        QCLI_Printf(ble_group, "\nSecurity is already in progress with another remote device.\n");
+                        QCLI_Printf(ble_Group, "\nSecurity is already in progress with another remote device.\n");
 
                         /* We are currently pairing/re-establishing     */
                         /* security with another remote device so we    */
@@ -4519,7 +4547,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      }
                      break;
                   case QAPI_BLE_LAT_PAIRING_REQUEST_E:
-                     QCLI_Printf(ble_group, "Pairing Request: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "Pairing Request: %s.\n", BoardStr);
                      DisplayLegacyPairingInformation(&Authentication_Event_Data->Authentication_Event_Data.Pairing_Request);
 
                      /* Make sure we are NOT pairing or re-establishing */
@@ -4544,7 +4572,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      {
                         /* Inform the user that we cannot accept the    */
                         /* request at this time.                        */
-                        QCLI_Printf(ble_group, "\nSecurity is already in progress with another remote device.\n");
+                        QCLI_Printf(ble_Group, "\nSecurity is already in progress with another remote device.\n");
 
                         /* We are currently pairing/re-establishing     */
                         /* security with another remote device so we    */
@@ -4559,7 +4587,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      }
                      break;
                   case QAPI_BLE_LAT_EXTENDED_PAIRING_REQUEST_E:
-                     QCLI_Printf(ble_group, "Extended Pairing Request: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "Extended Pairing Request: %s.\n", BoardStr);
                      DisplayPairingInformation(&(Authentication_Event_Data->Authentication_Event_Data.Extended_Pairing_Request));
 
                      /* Make sure we are NOT pairing or re-establishing */
@@ -4584,7 +4612,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      {
                         /* Inform the user that we cannot accept the    */
                         /* request at this time.                        */
-                        QCLI_Printf(ble_group, "\nSecurity is already in progress with another remote device.\n");
+                        QCLI_Printf(ble_Group, "\nSecurity is already in progress with another remote device.\n");
 
                         /* We are currently pairing/re-establishing     */
                         /* security with another remote device so we    */
@@ -4599,7 +4627,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      }
                      break;
                   case QAPI_BLE_LAT_CONFIRMATION_REQUEST_E:
-                     QCLI_Printf(ble_group, "latConfirmationRequest.\n");
+                     QCLI_Printf(ble_Group, "latConfirmationRequest.\n");
 
                      /* Check to see what type of confirmation request  */
                      /* this is.                                        */
@@ -4620,7 +4648,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                            switch(LE_Parameters.IOCapability)
                            {
                               case QAPI_BLE_LIC_NO_INPUT_NO_OUTPUT_E:
-                                 QCLI_Printf(ble_group, "Invoking Just Works.\n");
+                                 QCLI_Printf(ble_Group, "Invoking Just Works.\n");
 
                                  /* By setting the                      */
                                  /* Authentication_Data_Length to any   */
@@ -4631,11 +4659,11 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                                  Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                                  if(Result)
                                  {
-                                    QCLI_Printf(ble_group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
+                                    QCLI_Printf(ble_Group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
                                  }
                                  break;
                               case QAPI_BLE_LIC_DISPLAY_ONLY_E:
-                                 QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                 QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                  GAP_LE_Authentication_Response_Information.Authentication_Data.Passkey = Authentication_Event_Data->Authentication_Event_Data.Confirmation_Request.Display_Passkey;
 
@@ -4644,7 +4672,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                                     DisplayFunctionError("qapi_BLE_GAP_LE_Authentication_Response", Result);
                                  break;
                               default:
-                                 QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                 QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                  /* Submit the Authentication Response. */
                                  if((Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information)) != 0)
@@ -4655,26 +4683,26 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         case QAPI_BLE_CRT_PASSKEY_E:
                            /* Inform the user to call the appropriate   */
                            /* command.                                  */
-                           QCLI_Printf(ble_group, "Call LEPasskeyResponse [PASSCODE].\n");
+                           QCLI_Printf(ble_Group, "Call LEPasskeyResponse [PASSCODE].\n");
                            break;
                         case QAPI_BLE_CRT_DISPLAY_E:
-                           QCLI_Printf(ble_group, "Passkey: %06u.\n", (unsigned int)(Authentication_Event_Data->Authentication_Event_Data.Confirmation_Request.Display_Passkey));
+                           QCLI_Printf(ble_Group, "Passkey: %06u.\n", (unsigned int)(Authentication_Event_Data->Authentication_Event_Data.Confirmation_Request.Display_Passkey));
                            break;
                         default:
                            /* This application doesn't support OOB and  */
                            /* Secure Connections request types will be  */
                            /* handled by the ExtendedConfirmationRequest*/
                            /* event.  So we will simply inform the user.*/
-                           QCLI_Printf(ble_group, "Authentication method not supported.\n");
+                           QCLI_Printf(ble_Group, "Authentication method not supported.\n");
                            break;
                      }
                      break;
                   case QAPI_BLE_LAT_EXTENDED_CONFIRMATION_REQUEST_E:
-                     QCLI_Printf(ble_group, "latExtendedConfirmationRequest.\n");
+                     QCLI_Printf(ble_Group, "latExtendedConfirmationRequest.\n");
 
-                     QCLI_Printf(ble_group, "   Secure Connections:     %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_SECURE_CONNECTIONS)?"YES":"NO");
-                     QCLI_Printf(ble_group, "   Just Works Pairing:     %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_JUST_WORKS_PAIRING)?"YES":"NO");
-                     QCLI_Printf(ble_group, "   Keypress Notifications: %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_KEYPRESS_NOTIFICATIONS_REQUESTED)?"YES":"NO");
+                     QCLI_Printf(ble_Group, "   Secure Connections:     %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_SECURE_CONNECTIONS)?"YES":"NO");
+                     QCLI_Printf(ble_Group, "   Just Works Pairing:     %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_JUST_WORKS_PAIRING)?"YES":"NO");
+                     QCLI_Printf(ble_Group, "   Keypress Notifications: %s.\n", (Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Flags & QAPI_BLE_GAP_LE_EXTENDED_CONFIRMATION_REQUEST_FLAGS_KEYPRESS_NOTIFICATIONS_REQUESTED)?"YES":"NO");
 
                      /* Check to see what type of confirmation request  */
                      /* this is.                                        */
@@ -4695,17 +4723,17 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                            switch(LE_Parameters.IOCapability)
                            {
                               case QAPI_BLE_LIC_NO_INPUT_NO_OUTPUT_E:
-                                 QCLI_Printf(ble_group, "Invoking Just Works.\n");
+                                 QCLI_Printf(ble_Group, "Invoking Just Works.\n");
 
                                  /* Just Accept Just Works Pairing.     */
                                  Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                                  if(Result)
                                  {
-                                    QCLI_Printf(ble_group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
+                                    QCLI_Printf(ble_Group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
                                  }
                                  break;
                               case QAPI_BLE_LIC_DISPLAY_ONLY_E:
-                                 QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                 QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                  GAP_LE_Authentication_Response_Information.Authentication_Data.Passkey = Authentication_Event_Data->Authentication_Event_Data.Confirmation_Request.Display_Passkey;
 
@@ -4714,7 +4742,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                                     DisplayFunctionError("qapi_BLE_GAP_LE_Authentication_Response", Result);
                                  break;
                               default:
-                                 QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                 QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                  /* Submit the Authentication Response. */
                                  if((Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information)) != 0)
@@ -4725,10 +4753,10 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         case QAPI_BLE_CRT_PASSKEY_E:
                            /* Inform the user to call the appropriate   */
                            /* command.                                  */
-                           QCLI_Printf(ble_group, "Call LEPasskeyResponse [PASSKEY].\n");
+                           QCLI_Printf(ble_Group, "Call LEPasskeyResponse [PASSKEY].\n");
                            break;
                         case QAPI_BLE_CRT_DISPLAY_E:
-                           QCLI_Printf(ble_group, "Passkey: %06u.\n", Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Display_Passkey);
+                           QCLI_Printf(ble_Group, "Passkey: %06u.\n", Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Display_Passkey);
 
                            GAP_LE_Authentication_Response_Information.GAP_LE_Authentication_Type  = QAPI_BLE_LAR_PASSKEY_E;
                            GAP_LE_Authentication_Response_Information.Authentication_Data_Length  = (uint8_t)(sizeof(uint32_t));
@@ -4759,17 +4787,17 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                               switch(LE_Parameters.IOCapability)
                               {
                                  case QAPI_BLE_LIC_NO_INPUT_NO_OUTPUT_E:
-                                    QCLI_Printf(ble_group, "Invoking Just Works.\n");
+                                    QCLI_Printf(ble_Group, "Invoking Just Works.\n");
 
                                     /* Just Accept Just Works Pairing.  */
                                     Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                                     if(Result)
                                     {
-                                       QCLI_Printf(ble_group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
+                                       QCLI_Printf(ble_Group, "qapi_BLE_GAP_LE_Authentication_Response returned %d.\n", Result);
                                     }
                                     break;
                                  case QAPI_BLE_LIC_DISPLAY_ONLY_E:
-                                    QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                    QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                     GAP_LE_Authentication_Response_Information.Authentication_Data.Passkey = Authentication_Event_Data->Authentication_Event_Data.Confirmation_Request.Display_Passkey;
 
@@ -4779,7 +4807,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                                        DisplayFunctionError("qapi_BLE_GAP_LE_Authentication_Response", Result);
                                     break;
                                  default:
-                                    QCLI_Printf(ble_group, "Confirmation of Pairing.\n");
+                                    QCLI_Printf(ble_Group, "Confirmation of Pairing.\n");
 
                                     /* Submit the Authentication        */
                                     /* Response.                        */
@@ -4793,7 +4821,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                               /* This is numeric comparison so go ahead */
                               /* and display the numeric value to       */
                               /* confirm.                               */
-                              QCLI_Printf(ble_group, "Confirmation Value: %ld\n", (unsigned long)Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Display_Passkey);
+                              QCLI_Printf(ble_Group, "Confirmation Value: %ld\n", (unsigned long)Authentication_Event_Data->Authentication_Event_Data.Extended_Confirmation_Request.Display_Passkey);
 
                               /* Submit the Authentication Response.    */
                               if((Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information)) != 0)
@@ -4802,7 +4830,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                            }
                            break;
                         case QAPI_BLE_CRT_OOB_SECURE_CONNECTIONS_E:
-                           QCLI_Printf(ble_group, "OOB Data Request.\n");
+                           QCLI_Printf(ble_Group, "OOB Data Request.\n");
 
                            /* Format the response.                      */
                            GAP_LE_Authentication_Response_Information.GAP_LE_Authentication_Type = QAPI_BLE_LAR_OUT_OF_BAND_DATA_E;
@@ -4825,13 +4853,13 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                         default:
                            /* This application doesn't support OOB so we*/
                            /* will simply inform the user.              */
-                           QCLI_Printf(ble_group, "Authentication method not supported.\n");
+                           QCLI_Printf(ble_Group, "Authentication method not supported.\n");
                            break;
                      }
                      break;
                   case QAPI_BLE_LAT_SECURITY_ESTABLISHMENT_COMPLETE_E:
-                     QCLI_Printf(ble_group, "Security Re-Establishment Complete: %s.\n", BoardStr);
-                     QCLI_Printf(ble_group, "                            Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Security_Establishment_Complete.Status);
+                     QCLI_Printf(ble_Group, "Security Re-Establishment Complete: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "                            Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Security_Establishment_Complete.Status);
 
                      /* If this failed due to a LTK issue then we should*/
                      /* delete the LTK.                                 */
@@ -4853,36 +4881,39 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      break;
                   case QAPI_BLE_LAT_PAIRING_STATUS_E:
 			
-			QCLI_Printf(ble_group, "Pairing Status: %s.\n", BoardStr);
-                     QCLI_Printf(ble_group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
+            QCLI_Printf(ble_Group, "Pairing Status  w.r.t bulb\n");
+            QCLI_Printf(ble_Group, "Pairing Status: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
 
                      if(Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status == QAPI_BLE_GAP_LE_PAIRING_STATUS_NO_ERROR)
                      {
-                        QCLI_Printf(ble_group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
+                        QCLI_Printf(ble_Group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
 			
 			        if ((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Authentication_Event_Data->BD_ADDR)) != NULL) {
 		                    DeviceInfo -> device_type = DEVICE_TYPE_BULB;
                             
 				            if ((DeviceInfo_persistlist = SearchDeviceInfoEntryByType(&PersistDeviceInfoList,DEVICE_TYPE_BULB)) != NULL) { 
-                                   memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+                                if (QAPI_BLE_COMPARE_BD_ADDR(Authentication_Event_Data->BD_ADDR, DeviceInfo_persistlist->RemoteAddress)) {
+                                    break;
+                                }  
+                                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
+
                             }else{
 
 					            if((DeviceInfo_persistlist = CreateNewDeviceInfoEntry(&PersistDeviceInfoList, Authentication_Event_Data->BD_ADDR )) != NULL)                    
                                 {
 											
 					                memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t));
-                                	QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+                                    QCLI_Printf(ble_Group, "Device entry created in the persist info list\n");
 
 			                   }
 			
                         }
 
 			}
-
-
 				
 			status = StorePersistentData();
-			QCLI_Printf(ble_group, "status of persistent storage after the bulb connection :%d\n",status);
+            QCLI_Printf(ble_Group, "status of persistent storage after the bulb connection :%d\n",status);
                         
 			DiscoverBLBDServices(Authentication_Event_Data->BD_ADDR);/* perform service discovery */
 			//blbd_discover_services()
@@ -4906,12 +4937,12 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 
 
 #if 0
-                     QCLI_Printf(ble_group, "Pairing Status: %s.\n", BoardStr);
-                     QCLI_Printf(ble_group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
+                     QCLI_Printf(ble_Group, "Pairing Status: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "        Status: 0x%02X.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status);
 
                      if(Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Status == QAPI_BLE_GAP_LE_PAIRING_STATUS_NO_ERROR)
                      {
-                        QCLI_Printf(ble_group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
+                        QCLI_Printf(ble_Group, "        Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Pairing_Status.Negotiated_Encryption_Key_Size);
 		            
                         if ((DeviceInfo = SearchDeviceInfoEntryByBD_ADDR(&DeviceInfoList,Authentication_Event_Data->BD_ADDR)) != NULL) { 
                              DeviceInfo -> device_type = DEVICE_TYPE_BULB;                           
@@ -4923,7 +4954,7 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                                 if((DeviceInfo_persistlist = CreateNewDeviceInfoEntry(&PersistDeviceInfoList, Authentication_Event_Data->BD_ADDR )) != NULL)                      {    
                          
                                 memcpy(DeviceInfo_persistlist, DeviceInfo , sizeof(DeviceInfo_t);
-                                QCLI_Printf(ble_group, "Device entry created in the persist info list\n");
+                                QCLI_Printf(ble_Group, "Device entry created in the persist info list\n");
                             }
                         }      
                     }
@@ -4956,14 +4987,14 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
 #endif
                      break;
                   case QAPI_BLE_LAT_ENCRYPTION_INFORMATION_REQUEST_E:
-                     QCLI_Printf(ble_group, "Encryption Information Request %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "Encryption Information Request %s.\n", BoardStr);
 
                      /* Generate new LTK, EDIV and Rand and respond with*/
                      /* them.                                           */
                      EncryptionInformationRequestResponse(Authentication_Event_Data->BD_ADDR, Authentication_Event_Data->Authentication_Event_Data.Encryption_Request_Information.Encryption_Key_Size, &GAP_LE_Authentication_Response_Information);
                      break;
                   case QAPI_BLE_LAT_IDENTITY_INFORMATION_REQUEST_E:
-                     QCLI_Printf(ble_group, "Identity Information Request %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "Identity Information Request %s.\n", BoardStr);
 
                      /* Store our identity information to send to the   */
                      /* remote device since it has been requested.      */
@@ -4980,17 +5011,17 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      Result = qapi_BLE_GAP_LE_Authentication_Response(BluetoothStackID, Authentication_Event_Data->BD_ADDR, &GAP_LE_Authentication_Response_Information);
                      if(!Result)
                      {
-                        QCLI_Printf(ble_group, "   qapi_BLE_GAP_LE_Authentication_Response (larEncryptionInformation) success.\n");
+                        QCLI_Printf(ble_Group, "   qapi_BLE_GAP_LE_Authentication_Response (larEncryptionInformation) success.\n");
                      }
                      else
                      {
-                        QCLI_Printf(ble_group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", Result);
+                        QCLI_Printf(ble_Group, "   Error - SM_Generate_Long_Term_Key returned %d.\n", Result);
                      }
                      break;
                   case QAPI_BLE_LAT_ENCRYPTION_INFORMATION_E:
                      /* Display the information from the event.         */
-                     QCLI_Printf(ble_group, " Encryption Information from RemoteDevice: %s.\n", BoardStr);
-                     QCLI_Printf(ble_group, "                             Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Encryption_Key_Size);
+                     QCLI_Printf(ble_Group, " Encryption Information from RemoteDevice: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, "                             Key Size: %d.\n", Authentication_Event_Data->Authentication_Event_Data.Encryption_Information.Encryption_Key_Size);
 
                      /* Search for the entry for this slave to store the*/
                      /* information into.                               */
@@ -5005,13 +5036,13 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      }
                      else
                      {
-                        QCLI_Printf(ble_group, "No Key Info Entry for this device.\n");
+                        QCLI_Printf(ble_Group, "No Key Info Entry for this device.\n");
                      }
                      break;
 
                   case QAPI_BLE_LAT_IDENTITY_INFORMATION_E:
                      /* Display the information from the event.         */
-                     QCLI_Printf(ble_group, " Identity Information from RemoteDevice: %s.\n", BoardStr);
+                     QCLI_Printf(ble_Group, " Identity Information from RemoteDevice: %s.\n", BoardStr);
 
                      /* Search for the entry for this slave to store the*/
                      /* information into.                               */
@@ -5033,18 +5064,18 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                      }
                      else
                      {
-                        QCLI_Printf(ble_group, "No Key Info Entry for this device.\n");
+                        QCLI_Printf(ble_Group, "No Key Info Entry for this device.\n");
                      }
                      break;
                   default:
-                     QCLI_Printf(ble_group, "Unhandled event: %u\n", Authentication_Event_Data->GAP_LE_Authentication_Event_Type);
+                     QCLI_Printf(ble_Group, "Unhandled event: %u\n", Authentication_Event_Data->GAP_LE_Authentication_Event_Type);
                      break;
                }
             }
             break;
          case QAPI_BLE_ET_LE_DIRECT_ADVERTISING_REPORT_E:
-            QCLI_Printf(ble_group, "etLE_Direct_Advertising_Report with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
-            QCLI_Printf(ble_group, "  %d Responses.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Direct_Advertising_Report_Event_Data->Number_Device_Entries);
+            QCLI_Printf(ble_Group, "etLE_Direct_Advertising_Report with size %d.\n", (int)GAP_LE_Event_Data->Event_Data_Size);
+            QCLI_Printf(ble_Group, "  %d Responses.\n", GAP_LE_Event_Data->Event_Data.GAP_LE_Direct_Advertising_Report_Event_Data->Number_Device_Entries);
 
             for(Index = 0; Index < GAP_LE_Event_Data->Event_Data.GAP_LE_Direct_Advertising_Report_Event_Data->Number_Device_Entries; Index++)
             {
@@ -5054,25 +5085,25 @@ static void QAPI_BLE_BTPSAPI BLBD_GAP_LE_Event_Callback(uint32_t BluetoothStackI
                switch(DirectDeviceEntryPtr->Address_Type)
                {
                   case QAPI_BLE_LAT_PUBLIC_E:
-                     QCLI_Printf(ble_group, "  Address Type: %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
+                     QCLI_Printf(ble_Group, "  Address Type: %s.\n", "QAPI_BLE_LAT_PUBLIC_E");
                      break;
                   case QAPI_BLE_LAT_RANDOM_E:
-                     QCLI_Printf(ble_group, "  Address Type: %s.\n", "QAPI_BLE_LAT_RANDOM_E");
+                     QCLI_Printf(ble_Group, "  Address Type: %s.\n", "QAPI_BLE_LAT_RANDOM_E");
                      break;
                   case QAPI_BLE_LAT_PUBLIC_IDENTITY_E:
-                     QCLI_Printf(ble_group, "  Address Type: %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
+                     QCLI_Printf(ble_Group, "  Address Type: %s.\n", "QAPI_BLE_LAT_PUBLIC_IDENTITY_E");
                      break;
                   case QAPI_BLE_LAT_RANDOM_IDENTITY_E:
-                     QCLI_Printf(ble_group, "  Address Type: %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
+                     QCLI_Printf(ble_Group, "  Address Type: %s.\n", "QAPI_BLE_LAT_RANDOM_IDENTITY_E");
                      break;
                   default:
-                     QCLI_Printf(ble_group, "  Address Type: Invalid.\n");
+                     QCLI_Printf(ble_Group, "  Address Type: Invalid.\n");
                      break;
                }
 
                /* Display the Device Address.                           */
-               QCLI_Printf(ble_group, "  Address:      0x%02X%02X%02X%02X%02X%02X.\n", DirectDeviceEntryPtr->BD_ADDR.BD_ADDR5, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR4, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR3, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR2, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR1, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR0);
-               QCLI_Printf(ble_group, "  RSSI:         %d.\n", (int)(DirectDeviceEntryPtr->RSSI));
+               QCLI_Printf(ble_Group, "  Address:      0x%02X%02X%02X%02X%02X%02X.\n", DirectDeviceEntryPtr->BD_ADDR.BD_ADDR5, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR4, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR3, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR2, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR1, DirectDeviceEntryPtr->BD_ADDR.BD_ADDR0);
+               QCLI_Printf(ble_Group, "  RSSI:         %d.\n", (int)(DirectDeviceEntryPtr->RSSI));
             }
             break;
          default:
@@ -5095,19 +5126,22 @@ int Initialize_Home_Automation(void)
 
     uint32_t ConnectionTimeout = 15 ; /* wait for 15 sec after the connect request is sent */
     DeviceInfo_t *bulb_device;
+    qapi_BLE_GAP_LE_Address_Type_t type;
     QCLI_Command_Status_t status;
-    ble_group = QCLI_Register_Command_Group(NULL, &ble_cmd_group);
+    qapi_BLE_BD_ADDR_t BulbAddress;
+    memset(&BulbAddress, 0, sizeof(qapi_BLE_BD_ADDR_t));
+    ble_Group = QCLI_Register_Command_Group(NULL, &ble_cmd_group);
     if (InitializeBluetooth() != QCLI_STATUS_SUCCESS_E)
     {
         LOG_ERROR("BLE: Error InitializeBluetooth()\n");
         return -1;
     }
 
-    QCLI_Printf(ble_group, "Before loadin\n\n");
-    status = LoadPersistentData(&DeviceInfoList);
-    QCLI_Printf(ble_group, "status of loading the persistent data of deviceinfo list : %0x\n",status);
-    status = LoadPersistentData(&PersistDeviceInfoList);
-    QCLI_Printf(ble_group, "status of loading the persistent data of persistdevice info list : %0x\n",status);
+    QCLI_Printf(ble_Group, "Before loadin\n\n");
+    status = LoadPersistentData(&DeviceInfoList, &BulbAddress,&type);
+    QCLI_Printf(ble_Group, "status of loading the persistent data of deviceinfo list : %0x\n",status);
+    status = LoadPersistentData(&PersistDeviceInfoList, &BulbAddress,&type);
+    QCLI_Printf(ble_Group, "status of loading the persistent data of persistdevice info list : %0x\n",status);
 
     if (AdvertiseLE(1) != QCLI_STATUS_SUCCESS_E)
     {
@@ -5117,33 +5151,35 @@ int Initialize_Home_Automation(void)
     LOG_ERROR("BLE: AdveiseLE() enabled\n");
     /*Start Central thread */
 
-    /*Check for seg fault in*/
-    //    adc_test(NULL,NULL);
-    //smoke_sensor_init();
     BLE_timer_init();
 
     Sleep(1000);
 
+    QCLI_Printf(ble_Group, "searching the bulb device\n\n");
+    if ( BulbAddress.BD_ADDR0 != 0x00 && BulbAddress.BD_ADDR1 != 0x00 ) {
+        ConnectLEDevice(BluetoothStackID, FALSE, &BulbAddress, type);
 
-    QCLI_Printf(ble_group, "searching the bulb device\n\n");
-    if((bulb_device = SearchDeviceInfoEntryByType(&DeviceInfoList,DEVICE_TYPE_BULB)) != NULL) {
-        ConnectLEDevice(BluetoothStackID, FALSE, &(bulb_device->RemoteAddress), bulb_device->RemoteAddressType);
-
-        QCLI_Printf(ble_group, "Device entry found , sending the connet request\n");
+        QCLI_Printf(ble_Group, "Device entry found , sending the connet request\n");
 
         //  state_flags = state_flags | SCAN_PERMITTED; 
         ConnTimerID = qapi_BLE_BSC_StartTimer(BluetoothStackID, (ConnectionTimeout * 1000) , Conn_Timer_Callback, ConnectionTimeout);
         if(!ConnTimerID)
-            QCLI_Printf(ble_group, "Failed to start the connection timer\n");
+            QCLI_Printf(ble_Group, "Failed to start the connection timer\n");
         else
-            QCLI_Printf(ble_group, "Connection timer started successfully\n");
-    }else
-        QCLI_Printf(ble_group, "Initially bulb device not found in the persist list\n");
+            QCLI_Printf(ble_Group, "Connection timer started successfully\n");
+    } else {
+        LOG_ERROR ("Bulb device not found\n\n");
+    }  
+    
     while (SMOKE_SENSOR_ENABLED) {
-        adc_test1(&SmokeDetectorValue);
+        LOG_ERROR("Smoke detector value %02x\n\n",smoke_Detector_Value);
+        
+        adc_test1(&smoke_Detector_Value);
         Sleep(1000);
     }
+    
     LOG_ERROR("Done\n\n\n\n\n");
+    
     return QCLI_STATUS_SUCCESS_E;
 }
 
