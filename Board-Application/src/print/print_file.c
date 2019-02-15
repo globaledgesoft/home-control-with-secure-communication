@@ -64,6 +64,6 @@ extern void HW_BT_Init();
  */
 void Initialize_Demo(void)
 {
-   PAL_CONSOLE_WRITE_STRING_LITERAL("Welcome to Home Control Application \r\n");
+   PAL_CONSOLE_WRITE_STRING_LITERAL("Welcome to Home Automation \r\n");
    PAL_CONSOLE_WRITE_STRING_LITERAL(PAL_OUTPUT_END_OF_LINE_STRING);
 }

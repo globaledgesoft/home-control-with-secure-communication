@@ -532,6 +532,8 @@ typedef struct _tagXferInfo_t
 typedef struct _tagDeviceInfo_t
 {
    uint8_t                                Flags;
+   uint8_t                                BulbFlag;
+   qapi_BLE_BD_ADDR_t                     BulbAddress;
    uint8_t                                device_type;
    unsigned int                           ConnectionID;
    boolean_t                              RemoteDeviceIsMaster;
@@ -587,7 +589,10 @@ typedef struct _tagPersistentData_t
 {
    qapi_BLE_BD_ADDR_t LocalAddress;
    uint8_t NumberRemoteDevices;
-   PersistentRemoteDeviceData_t RemoteDevices[1];
+   uint8_t BulbFlag;
+   qapi_BLE_BD_ADDR_t BulbAddress;
+   qapi_BLE_GAP_LE_Address_Type_t BulbAddressType;
+   PersistentRemoteDeviceData_t RemoteDevices;
 } PersistentData_t;
 
 #define PERSISTENT_DATA_SIZE(_x)                         (QAPI_BLE_BTPS_STRUCTURE_OFFSET(PersistentData_t, RemoteDevices) + (PERSISTENT_REMOTE_DEVICE_DATA_SIZE * (_x)))

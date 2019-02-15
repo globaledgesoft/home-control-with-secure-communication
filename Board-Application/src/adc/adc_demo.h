@@ -36,5 +36,5 @@ typedef struct _adc_result {
 */
 void Initialize_ADC_Demo(void);
 
-uint16_t home_automation_adc(uint32_t Parameter_Count, QCLI_Parameter_t *Parameter_List);
+uint16_t _automation_adc(uint32_t Parameter_Count, QCLI_Parameter_t *Parameter_List);
 
